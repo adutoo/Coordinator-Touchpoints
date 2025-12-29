@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Coordinator Touchpoints — Login</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div>
+          <h1>Coordinator Touchpoints</h1>
+          <p>Secure login (no signup)</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card span6">
+        <h2>Login</h2>
+        <p class="muted">Use your coordinator email + password.</p>
+
+        <form id="loginForm" class="form">
+          <div class="field">
+            <label>Email</label>
+            <input id="email" type="email" autocomplete="username" required />
+          </div>
+          <div class="field">
+            <label>Password</label>
+            <input id="password" type="password" autocomplete="current-password" required />
+          </div>
+          <div class="field">
+            <button class="btn primary" type="submit">Sign In</button>
+          </div>
+        </form>
+
+        <div id="msg" class="notice" style="display:none;"></div>
+      </div>
+
+      <div class="card span6">
+        <h2>What this app does</h2>
+        <p class="muted">
+          Capture every parent/student interaction, auto-fill student details,
+          and generate filtered reports with Excel export.
+        </p>
+        <div class="kpi">
+          <div class="pill"><b>Entry Form</b><span>Fast, guided touchpoint logging</span></div>
+          <div class="pill"><b>Dashboard</b><span>Overview of coordinator activity</span></div>
+          <div class="pill"><b>Reports</b><span>Filter + Export to XLSX</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Supabase JS via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script> <!-- :contentReference[oaicite:2]{index=2} -->
+  <script type="module" src="js/login.js"></script>
+</body>
+</html>

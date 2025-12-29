@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Coordinator Touchpoints — New Entry</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <div id="navHolder"></div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>New Touchpoint Entry</h2>
+        <p class="muted">Fill the form and submit. Student details and time are auto-filled.</p>
+
+        <form id="tpForm" class="form">
+
+          <!-- Row 1 -->
+          <div class="field span4">
+            <label>Child Name</label>
+            <select id="childSelect" required data-placeholder="Select child...">
+              <option value=""></option>
+            </select>
+          </div>
+
+          <div class="field span4">
+            <label>Medium</label>
+            <select id="mediumSelect" required data-placeholder="Select medium...">
+              <option value=""></option>
+            </select>
+          </div>
+
+          <div class="field span4">
+            <label>Objective</label>
+            <select id="objectiveSelect" required data-placeholder="Select objective...">
+              <option value=""></option>
+            </select>
+          </div>
+
+          <!-- Row 2 -->
+          <div class="field span6">
+            <label>Positives / Strengths / What good we are doing</label>
+            <textarea id="positives" rows="4" placeholder="Write positives / strengths..."></textarea>
+          </div>
+
+          <div class="field span6">
+            <label>Suggestion / Weakness / What we or the student need to improve /Questions</label>
+            <textarea id="suggestion" rows="4" placeholder="Write suggestions / improvements / questions..."></textarea>
+          </div>
+
+          <!-- Row 3 (Ticket section) -->
+          <div class="field span3">
+            <label>Ticket raised?</label>
+            <select id="ticketRaised" required data-placeholder="Ticket raised?">
+              <option value="">Loading...</option>
+            </select>
+          </div>
+
+          <div class="field span3">
+            <label>Ticket Number <span class="muted">(Optional)</span></label>
+            <input id="ticketNumber" type="text" placeholder="Optional ticket number" />
+          </div>
+
+          <div class="field span3">
+            <label>Time (Auto)</label>
+            <input id="timeAuto" type="text" readonly placeholder="Auto from Medium" />
+          </div>
+
+          <div class="field span3">
+            <label>Timestamp (Auto)</label>
+            <input id="tsAuto" type="text" readonly placeholder="Auto at submit" />
+          </div>
+
+          <!-- Row 4 (Student auto-details) -->
+          <div class="field span3">
+            <label>Name (Auto)</label>
+            <input id="studentName" type="text" readonly />
+          </div>
+
+          <div class="field span3">
+            <label>Class (Auto)</label>
+            <input id="className" type="text" readonly />
+          </div>
+
+          <div class="field span3">
+            <label>Section (Auto)</label>
+            <input id="section" type="text" readonly />
+          </div>
+
+          <div class="field span3">
+            <label>SR Number (Auto)</label>
+            <input id="srNumber" type="text" readonly />
+          </div>
+
+          <!-- Actions -->
+          <div class="field span12">
+            <div class="row" style="justify-content:flex-end;">
+              <button id="resetBtn" class="btn" type="button">Reset</button>
+              <button class="btn primary" type="submit">Save Entry</button>
+            </div>
+          </div>
+        </form>
+
+        <div id="msg" class="notice" style="display:none;"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script type="module" src="js/entry.js"></script>
+</body>
+</html>

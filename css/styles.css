@@ -1,0 +1,499 @@
+:root{
+  --bg1:#05060a;
+  --bg2:#0b1020;
+  --glass: rgba(255,255,255,0.08);
+  --glass2: rgba(255,255,255,0.12);
+  --border: rgba(255,255,255,0.14);
+  --text: rgba(255,255,255,0.92);
+  --muted: rgba(255,255,255,0.62);
+  --accent: #7c5cff;
+  --accent2:#00d4ff;
+  --danger:#ff4d6d;
+  --shadow: 0 20px 60px rgba(0,0,0,0.55);
+}
+
+*{ box-sizing:border-box; }
+html,body{ height:100%; }
+body{
+  margin:0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+  color: var(--text);
+  background:
+    radial-gradient(1200px 800px at 20% 10%, rgba(124,92,255,0.20), transparent 60%),
+    radial-gradient(1200px 800px at 80% 30%, rgba(0,212,255,0.14), transparent 60%),
+    linear-gradient(180deg, var(--bg1), var(--bg2));
+}
+
+a{ color:inherit; text-decoration:none; }
+
+.container{
+  width: 100%;
+  max-width: none;     /* IMPORTANT: removes the 1100px cap */
+  margin: 0 auto;
+  padding: 20px 28px;  /* nice spacing on big screens */
+}
+
+@media (max-width: 600px){
+  .container{ padding: 14px; }
+}
+
+
+.topbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  background: var(--glass);
+  backdrop-filter: blur(14px);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+}
+
+.brand{
+  display:flex; gap:10px; align-items:center;
+}
+.logo{
+  width:38px; height:38px; border-radius: 14px;
+  background:
+    radial-gradient(circle at 30% 30%, rgba(255,255,255,0.35), transparent 60%),
+    linear-gradient(135deg, rgba(124,92,255,0.95), rgba(0,212,255,0.75));
+  box-shadow: 0 18px 40px rgba(124,92,255,0.25);
+  transform: translateZ(0);
+}
+.brand h1{ font-size: 16px; margin:0; letter-spacing:0.2px; }
+.brand p{ margin:0; font-size:12px; color: var(--muted); }
+
+.nav{
+  display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+}
+.nav a{
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  color: var(--muted);
+  transition: 160ms ease;
+}
+.nav a:hover{
+  border-color: var(--border);
+  background: rgba(255,255,255,0.06);
+  color: var(--text);
+  transform: translateY(-1px);
+}
+.nav a.active{
+  border-color: rgba(124,92,255,0.55);
+  background: rgba(124,92,255,0.14);
+  color: var(--text);
+}
+
+.btn{
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.06);
+  color: var(--text);
+  cursor:pointer;
+  transition: 160ms ease;
+}
+.btn:hover{ transform: translateY(-1px); background: rgba(255,255,255,0.10); }
+.btn.primary{
+  border-color: rgba(124,92,255,0.65);
+  background: rgba(124,92,255,0.22);
+}
+.btn.danger{
+  border-color: rgba(255,77,109,0.55);
+  background: rgba(255,77,109,0.16);
+}
+
+.grid{
+  display:grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.card{
+  grid-column: span 12;
+  border: 1px solid var(--border);
+  background: var(--glass);
+  backdrop-filter: blur(14px);
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+  padding: 16px;
+  transform: perspective(900px) translateZ(0);
+}
+.card:hover{
+  border-color: rgba(255,255,255,0.20);
+}
+
+.card h2{ margin:0 0 8px 0; font-size: 16px; }
+.muted{ color: var(--muted); font-size: 12px; }
+
+.kpi{
+  display:flex; gap:12px; flex-wrap:wrap;
+}
+.kpi .pill{
+  min-width: 170px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--border);
+}
+.kpi .pill b{ font-size: 18px; display:block; margin-bottom:6px; }
+.kpi .pill span{ font-size: 12px; color: var(--muted); }
+
+.form{
+  display:grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 12px;
+  margin-top: 12px;
+}
+.field{ grid-column: span 12; display:flex; flex-direction:column; gap: 6px; }
+.field label{ font-size:12px; color: var(--muted); }
+.field input, .field select, .field textarea{
+  width:100%;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.18);
+  color: var(--text);
+  padding: 11px 12px;
+  outline:none;
+}
+.field textarea{ min-height: 96px; resize: vertical; }
+.field input[readonly]{
+  opacity: 0.85;
+  background: rgba(255,255,255,0.05);
+}
+
+.row{
+  display:flex; gap:10px; flex-wrap:wrap; align-items:center;
+}
+
+.tablewrap{ overflow:auto; border-radius: 16px; border: 1px solid var(--border); }
+table{
+  width:100%;
+  border-collapse: collapse;
+  min-width: 980px;
+}
+th, td{
+  padding: 10px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.10);
+  text-align:left;
+  font-size: 12px;
+  vertical-align: top;
+}
+th{
+  position: sticky;
+  top: 0;
+  background: rgba(10,12,18,0.85);
+  backdrop-filter: blur(10px);
+  font-size: 12px;
+  color: rgba(255,255,255,0.85);
+}
+
+.notice{
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.06);
+  color: var(--muted);
+}
+
+@media (min-width: 820px){
+  .card.span6{ grid-column: span 6; }
+  .field.span6{ grid-column: span 6; }
+  .field.span4{ grid-column: span 4; }
+  .field.span3{ grid-column: span 3; }
+}
+
+
+/* =========================
+   Dark Scrollbars (Global)
+   ========================= */
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.22) rgba(0,0,0,0.35);
+}
+
+/* Chromium / Edge / Safari */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(0,0,0,0.35);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.18);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.28);
+}
+
+
+/* =========================
+   Custom Dropdown (Dark Glass)
+   Uses your sample structure,
+   but keeps our theme
+   ========================= */
+
+.native-select-hidden {
+  position: absolute !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.custom-select-container {
+  position: relative;
+  width: 100%;
+  user-select: none;
+}
+
+.select-trigger {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(0,0,0,0.18);
+  padding: 11px 12px;
+  font-size: 14px;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: 160ms ease;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+}
+
+.select-trigger:hover {
+  background: rgba(255,255,255,0.06);
+  transform: translateY(-1px);
+}
+
+.select-trigger .trigger-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 10px;
+  color: rgba(255,255,255,0.90);
+}
+
+.select-trigger .trigger-text.placeholder {
+  color: rgba(255,255,255,0.55);
+}
+
+.arrow {
+  width: 18px;
+  height: 18px;
+  transition: transform 0.25s ease;
+  color: rgba(255,255,255,0.65);
+  flex: 0 0 auto;
+}
+
+/* Dropdown Menu (Hidden by default) */
+.options-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  background: rgba(14,16,24,0.86);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px);
+  transition: 160ms ease;
+  z-index: 200;
+  overflow: hidden;
+}
+
+/* Scroll inside menu */
+.options-menu .options-scroll {
+  max-height: 280px;
+  overflow: auto;
+}
+
+/* each option */
+.option {
+  padding: 10px 12px;
+  cursor: pointer;
+  color: rgba(255,255,255,0.88);
+  transition: background 0.12s ease;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.option:last-child {
+  border-bottom: none;
+}
+
+.option:hover {
+  background: rgba(124,92,255,0.20);
+  color: white;
+}
+
+/* selected option */
+.option.selected {
+  background: rgba(124,92,255,0.30);
+  color: white;
+  font-weight: 600;
+}
+
+/* OPEN STATE */
+.custom-select-container.open .options-menu {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.custom-select-container.open .select-trigger {
+  border-color: rgba(124,92,255,0.65);
+  box-shadow: 0 0 0 3px rgba(124,92,255,0.18);
+}
+
+.custom-select-container.open .arrow {
+  transform: rotate(180deg);
+  color: rgba(124,92,255,0.95);
+}
+
+
+/* ===== Custom Dropdown: Search UI ===== */
+.select-search-wrap{
+  padding: 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.10);
+  background: rgba(14,16,24,0.92);
+}
+
+.select-search{
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(0,0,0,0.22);
+  color: rgba(255,255,255,0.92);
+  padding: 10px 11px;
+  outline: none;
+}
+
+.select-search::placeholder{
+  color: rgba(255,255,255,0.55);
+}
+
+.select-search:focus{
+  border-color: rgba(124,92,255,0.65);
+  box-shadow: 0 0 0 3px rgba(124,92,255,0.16);
+}
+
+
+/* ===== Admin: Custom File Picker ===== */
+.file-picker{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+
+.file-input-hidden{
+  position:absolute;
+  left:-99999px;
+  width:1px;
+  height:1px;
+  opacity:0;
+  pointer-events:none;
+}
+
+.file-name-chip{
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.70);
+  max-width: 420px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+
+/* ===== Fixed-height scroll areas ===== */
+.tablewrap.maxh{
+  max-height: 340px;
+  overflow: auto;
+}
+
+#navHolder{
+  position: sticky;
+  top: 12px;
+  z-index: 9999;
+}
+
+
+/* =========================
+   FIX: Custom Dropdown glitch (Admin)
+   - Scope styles so other .option styles don't interfere
+   - Make dropdown overlay correctly (z-index)
+   ========================= */
+
+.custom-select-container { position: relative; }
+.custom-select-container.open { z-index: 99999; } /* ensures menu is above everything */
+
+.custom-select-container .options-menu{
+  background: rgba(14,16,24,0.92); /* stronger background so it doesn't look detached */
+  border: 1px solid rgba(255,255,255,0.14);
+}
+
+.custom-select-container .options-scroll{
+  background: rgba(14,16,24,0.92);
+}
+
+/* Scope option styling so other global `.option` doesn't break it */
+.custom-select-container .option{
+  display: block;
+  margin: 0;
+  background: transparent;
+  color: rgba(255,255,255,0.88);
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.custom-select-container .option:last-child{
+  border-bottom: none;
+}
+
+/* Rounded corners for first/last items inside the scroll list */
+.custom-select-container .options-scroll .option:first-child{
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+}
+.custom-select-container .options-scroll .option:last-child{
+  border-bottom-left-radius: 14px;
+  border-bottom-right-radius: 14px;
+}
+
+.custom-select-container .option:hover{
+  background: rgba(124,92,255,0.20);
+  color: #fff;
+}
+
+.custom-select-container .option.selected{
+  background: rgba(124,92,255,0.30);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Ensure cards can be raised above other cards */
+.card { position: relative; z-index: 1; }
+
+/* When any dropdown is open inside a card, raise that card above others */
+.card.dropdown-elevated { z-index: 100000; }
+
+/* Extra safety: make menu itself high */
+.custom-select-container .options-menu { z-index: 100001; }

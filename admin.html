@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Coordinator Touchpoints — Admin</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <div id="navHolder"></div>
+
+    <div class="grid">
+
+      <!-- Create coordinator account -->
+      <div class="card span6">
+        <h2>Create Coordinator Account</h2>
+        <p class="muted">Creates login for coordinators/admin. (Admin-only)</p>
+
+        <form id="createUserForm" class="form">
+          <div class="field span6">
+            <label>Email</label>
+            <input id="newEmail" type="email" placeholder="name@school.com" required />
+          </div>
+
+          <div class="field span6">
+            <label>Display Name</label>
+            <input id="newName" type="text" placeholder="Coordinator Name" required />
+          </div>
+
+          <div class="field span6">
+            <label>Password</label>
+            <input id="newPassword" type="text" placeholder="Set a password" required />
+          </div>
+
+          <div class="field span6">
+            <label>Role</label>
+            <select id="newRole" data-placeholder="Select role...">
+  <option value="coordinator" selected>Coordinator</option>
+  <option value="admin">Admin</option>
+</select>
+
+          </div>
+
+          <div class="field span12">
+            <button class="btn primary" type="submit">Create Account</button>
+          </div>
+        </form>
+
+        <div id="userMsg" class="notice" style="display:none;"></div>
+      </div>
+
+      <!-- Upload students -->
+      <div class="card span6">
+        <h2>Upload Students (Excel)</h2>
+        <p class="muted">
+          Required headers:
+          <b>SR No</b>, <b>Student Name</b>, <b>Class</b>, <b>Section</b>, <b>Concat</b> (Child Name)
+        </p>
+
+        <div class="file-picker" style="margin-top:10px;">
+          <input id="excelFile" class="file-input-hidden" type="file" accept=".xlsx,.xls" />
+          <button id="chooseFileBtn" class="btn" type="button">Choose Excel File</button>
+          <div id="fileNameChip" class="file-name-chip">No file chosen</div>
+
+          <button id="parseBtn" class="btn" type="button">Parse</button>
+          <button id="uploadBtn" class="btn primary" type="button" disabled>Upload to DB</button>
+        </div>
+
+        <div class="muted" id="uploadMeta" style="margin-top:10px;"></div>
+
+        <div class="tablewrap maxh" style="margin-top:10px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Child Name</th>
+                <th>Student Name</th>
+                <th>Class</th>
+                <th>Section</th>
+                <th>SR No</th>
+              </tr>
+            </thead>
+            <tbody id="previewRows"></tbody>
+          </table>
+        </div>
+
+        <div id="stuMsg" class="notice" style="display:none;"></div>
+      </div>
+
+      <!-- Manage Mediums -->
+      <div class="card span6">
+        <h2>Manage Mediums</h2>
+        <p class="muted">Time (min) is auto-filled in Entry. Default is 1 min. You can edit anytime.</p>
+
+        <form id="addMediumForm" class="form">
+          <div class="field span6">
+            <label>Medium Label</label>
+            <input id="medLabel" type="text" placeholder="e.g., Parent 1:1 Meet" required />
+          </div>
+
+          <div class="field span3">
+            <label>Time (min)</label>
+            <input id="medTimeMin" type="number" min="1" value="1" />
+          </div>
+
+          <div class="field span3">
+            <label>&nbsp;</label>
+            <button class="btn primary" type="submit">Add Medium</button>
+          </div>
+        </form>
+
+        <div class="tablewrap maxh">
+          <table>
+            <thead>
+              <tr>
+                <th>Label</th>
+                <th>Time (min)</th>
+                <th>Active</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="mediumRows"></tbody>
+          </table>
+        </div>
+
+        <div id="medMsg" class="notice" style="display:none;"></div>
+      </div>
+
+      <!-- Manage Objectives -->
+      <div class="card span6">
+        <h2>Manage Objectives</h2>
+        <p class="muted">Soft-remove by turning Active OFF.</p>
+
+        <form id="addObjForm" class="form">
+          <div class="field span9">
+            <label>Objective Label</label>
+            <input id="objLabel" type="text" placeholder="e.g., Attendance, Counselling..." required />
+          </div>
+          <div class="field span3">
+            <label>&nbsp;</label>
+            <button class="btn primary" type="submit">Add Objective</button>
+          </div>
+        </form>
+
+        <div class="tablewrap maxh">
+          <table>
+            <thead>
+              <tr>
+                <th>Label</th>
+                <th>Active</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="objectiveRows"></tbody>
+          </table>
+        </div>
+
+        <div id="objMsg" class="notice" style="display:none;"></div>
+      </div>
+
+      <!-- Manage Ticket Raised options -->
+      <div class="card">
+        <h2>Manage Ticket Raised Options</h2>
+        <p class="muted">Configure the Ticket raised? dropdown used in Entry.</p>
+
+        <form id="addTicketForm" class="form">
+          <div class="field span9">
+            <label>Option Label</label>
+            <input id="ticketLabel" type="text" placeholder="e.g., Yes / No / Pending" required />
+          </div>
+          <div class="field span3">
+            <label>&nbsp;</label>
+            <button class="btn primary" type="submit">Add Option</button>
+          </div>
+        </form>
+
+        <div class="tablewrap maxh">
+          <table>
+            <thead>
+              <tr>
+                <th>Label</th>
+                <th>Active</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="ticketRows"></tbody>
+          </table>
+        </div>
+
+        <div id="ticketMsg" class="notice" style="display:none;"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script type="module" src="js/admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Coordinator Touchpoints — Dashboard</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <div id="navHolder"></div>
+
+    <div class="grid">
+      <div class="card span6">
+        <h2>Overview</h2>
+        <p class="muted">Counts update from Supabase.</p>
+        <div class="kpi" id="kpis"></div>
+      </div>
+
+      <div class="card span6">
+        <h2>Recent Entries</h2>
+        <p class="muted">Latest touchpoints (all coordinators).</p>
+        <div class="tablewrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Owner</th>
+                <th>Child</th>
+                <th>Medium</th>
+                <th>Objective</th>
+              </tr>
+            </thead>
+            <tbody id="recentRows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card span6">
+        <h2>Coordinator Activity (Today)</h2>
+        <p class="muted">Who logged how many touchpoints today.</p>
+        <div class="tablewrap">
+          <table>
+            <thead>
+              <tr><th>Coordinator</th><th>Entries</th></tr>
+            </thead>
+            <tbody id="todayByCoord"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card span6">
+        <h2>Coordinator Activity (This Week)</h2>
+        <p class="muted">Monday → today (current week).</p>
+        <div class="tablewrap">
+          <table>
+            <thead>
+              <tr><th>Coordinator</th><th>Entries</th></tr>
+            </thead>
+            <tbody id="weekByCoord"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script> <!-- :contentReference[oaicite:2]{index=2} -->
+  <script type="module" src="js/dashboard.js"></script>
+</body>
+</html>
