@@ -13,6 +13,7 @@ const suggestion = document.getElementById("suggestion");
 const ticketRaised = document.getElementById("ticketRaised"); // required
 const ticketNumber = document.getElementById("ticketNumber"); // optional
 const timeAuto = document.getElementById("timeAuto");
+const tsAuto = document.getElementById("tsAuto"); // optional field in entry.html
 
 const studentName = document.getElementById("studentName");
 const className = document.getElementById("className");
@@ -32,7 +33,9 @@ function show(text, isError = false) {
   msg.style.color = isError ? "rgba(255,200,210,0.95)" : "rgba(255,255,255,0.72)";
   msg.textContent = text;
 }
-function hideMsg() { msg.style.display = "none"; }
+function hideMsg() {
+  msg.style.display = "none";
+}
 
 function fillStudentAuto(childName) {
   const s = students.find((x) => x.child_name === childName);
@@ -69,67 +72,107 @@ function refreshAllCustomSelects() {
   refreshSelect(ticketRaised);
 }
 
+/**
+ * IMPORTANT FIX:
+ * Supabase/PostgREST often returns limited rows (commonly 1k) unless paginated.
+ * This ensures all ~2100 students are loaded into the dropdown.
+ */
+async function fetchAllStudents() {
+  const pageSize = 1000;
+  let from = 0;
+  const all = [];
+
+  while (true) {
+    const { data, error } = await sb
+      .from("students")
+      .select("child_name,student_name,class_name,section,sr_number")
+      .order("child_name", { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (error) throw error;
+
+    all.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+
+    from += pageSize;
+  }
+
+  return all;
+}
+
+function buildSelectOptions(selectEl, items, getLabel, getValue) {
+  selectEl.innerHTML = "";
+  selectEl.appendChild(new Option("", "")); // empty option for placeholder
+
+  for (const item of items) {
+    const label = getLabel(item);
+    const value = getValue(item);
+    selectEl.appendChild(new Option(label, value));
+  }
+}
+
 (async () => {
   await mountNav("entry");
 
-  const [stuR, medR, objR, tickR] = await Promise.all([
-    sb.from("students")
-      .select("child_name,student_name,class_name,section,sr_number")
-      .order("child_name"),
+  try {
+    show("Loading data…");
 
-    sb.from("mediums")
-      .select("label,time_min,is_active")
-      .eq("is_active", true)
-      .order("sort_order")
-      .order("label"),
+    // Load students in pages + other dropdowns together
+    const [allStudents, medR, objR, tickR] = await Promise.all([
+      fetchAllStudents(),
+      sb
+        .from("mediums")
+        .select("label,time_min,is_active")
+        .eq("is_active", true)
+        .order("sort_order")
+        .order("label"),
+      sb
+        .from("objectives")
+        .select("label,is_active")
+        .eq("is_active", true)
+        .order("sort_order")
+        .order("label"),
+      sb
+        .from("ticket_raised_options")
+        .select("label,is_active")
+        .eq("is_active", true)
+        .order("sort_order")
+        .order("label"),
+    ]);
 
-    sb.from("objectives")
-      .select("label,is_active")
-      .eq("is_active", true)
-      .order("sort_order")
-      .order("label"),
+    if (medR.error) return show(medR.error.message, true);
+    if (objR.error) return show(objR.error.message, true);
+    if (tickR.error) return show(tickR.error.message, true);
 
-    sb.from("ticket_raised_options")
-      .select("label,is_active")
-      .eq("is_active", true)
-      .order("sort_order")
-      .order("label"),
-  ]);
+    students = allStudents || [];
+    mediums = medR.data || [];
 
-  if (stuR.error) return show(stuR.error.message, true);
-  if (medR.error) return show(medR.error.message, true);
-  if (objR.error) return show(objR.error.message, true);
-  if (tickR.error) return show(tickR.error.message, true);
+    // Build options safely
+    buildSelectOptions(childSelect, students, (s) => s.child_name, (s) => s.child_name);
+    buildSelectOptions(mediumSelect, mediums, (m) => m.label, (m) => m.label);
+    buildSelectOptions(objectiveSelect, objR.data || [], (o) => o.label, (o) => o.label);
+    buildSelectOptions(ticketRaised, tickR.data || [], (t) => t.label, (t) => t.label);
 
-  students = stuR.data || [];
-  mediums = medR.data || [];
+    // Enhance dropdowns
+    enhanceSelect(childSelect, { placeholder: "Select child...", search: true, searchThreshold: 0 });
+    enhanceSelect(mediumSelect, { placeholder: "Select medium..." });
+    enhanceSelect(objectiveSelect, { placeholder: "Select objective..." });
+    enhanceSelect(ticketRaised, { placeholder: "Ticket raised?" });
 
-  childSelect.innerHTML =
-    `<option value=""></option>` +
-    students.map((s) => `<option value="${s.child_name}">${s.child_name}</option>`).join("");
+    // Defaults
+    fillStudentAuto("");
+    timeAuto.value = "1 min";
+    if (tsAuto) tsAuto.value = "";
 
-  mediumSelect.innerHTML =
-    `<option value=""></option>` +
-    mediums.map((m) => `<option value="${m.label}">${m.label}</option>`).join("");
+    refreshAllCustomSelects();
+    hideMsg();
 
-  objectiveSelect.innerHTML =
-    `<option value=""></option>` +
-    (objR.data || []).map((o) => `<option value="${o.label}">${o.label}</option>`).join("");
-
-  ticketRaised.innerHTML =
-    `<option value=""></option>` +
-    (tickR.data || []).map((t) => `<option value="${t.label}">${t.label}</option>`).join("");
-
-  // Custom dropdowns (+ search for big child list)
-  enhanceSelect(childSelect, { placeholder: "Select child...", search: true, searchThreshold: 0 });
-  enhanceSelect(mediumSelect, { placeholder: "Select medium..." });
-  enhanceSelect(objectiveSelect, { placeholder: "Select objective..." });
-  enhanceSelect(ticketRaised, { placeholder: "Ticket raised?" });
-
-  fillStudentAuto("");
-  timeAuto.value = "1 min";
-  refreshAllCustomSelects();
-  hideMsg();
+    // Helpful debug
+    // console.log("Loaded students:", students.length);
+  } catch (err) {
+    console.error(err);
+    show(err?.message || String(err), true);
+  }
 })();
 
 childSelect.addEventListener("change", () => fillStudentAuto(childSelect.value));
@@ -145,6 +188,8 @@ resetBtn.addEventListener("click", () => {
 
   fillStudentAuto("");
   timeAuto.value = "1 min";
+  if (tsAuto) tsAuto.value = "";
+
   refreshAllCustomSelects();
   hideMsg();
 });
@@ -172,6 +217,8 @@ form.addEventListener("submit", async (e) => {
 
   const time_min = fillTimeFromMedium(mediumSelect.value);
   const timeText = `${time_min} min`;
+
+  if (tsAuto) tsAuto.value = now.toLocaleString();
 
   const payload = {
     child_name: childSelect.value,
@@ -218,5 +265,7 @@ form.addEventListener("submit", async (e) => {
 
   fillStudentAuto("");
   timeAuto.value = "1 min";
+  if (tsAuto) tsAuto.value = "";
+
   refreshAllCustomSelects();
 });
