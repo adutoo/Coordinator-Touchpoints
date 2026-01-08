@@ -5,7 +5,9 @@ import { requireAdmin } from "./auth.js";
 import { enhanceSelect, refreshSelect } from "./customSelect.js";
 
 const userMsg = document.getElementById("userMsg");
+const userMgmtMsg = document.getElementById("userMgmtMsg");
 const stuMsg = document.getElementById("stuMsg");
+const stuDelMsg = document.getElementById("stuDelMsg");
 const medMsg = document.getElementById("medMsg");
 const objMsg = document.getElementById("objMsg");
 const ticketMsg = document.getElementById("ticketMsg");
@@ -13,15 +15,10 @@ const ticketMsg = document.getElementById("ticketMsg");
 function show(el, text, isErr = false) {
   if (!el) return;
   el.style.display = "block";
-  el.style.borderColor = isErr
-    ? "rgba(255,77,109,0.55)"
-    : "rgba(124,92,255,0.55)";
-  el.style.color = isErr
-    ? "rgba(255,200,210,0.95)"
-    : "rgba(255,255,255,0.72)";
+  el.style.borderColor = isErr ? "rgba(255,77,109,0.55)" : "rgba(124,92,255,0.55)";
+  el.style.color = isErr ? "rgba(255,200,210,0.95)" : "rgba(255,255,255,0.72)";
   el.textContent = text;
 }
-
 function hide(el) {
   if (!el) return;
   el.style.display = "none";
@@ -43,12 +40,14 @@ let parsedStudents = [];
   await requireAdmin();
   await mountNav("admin");
 
-  // Make Admin dropdowns match Entry page style
+  // Admin dropdown style
   const roleSel = document.getElementById("newRole");
   if (roleSel) enhanceSelect(roleSel, { placeholder: roleSel.getAttribute("data-placeholder") || "Select role..." });
 
   wireCreateAccount();
+  wireManageUsers();
   wireFilePicker();
+  wireStudentSearch();
   wireAddMedium();
   wireAddObjective();
   wireAddTicket();
@@ -84,9 +83,7 @@ function wireCreateAccount() {
 
     show(userMsg, "Creating account…");
 
-    // ✅ Recommended function endpoint
     const fnUrl = `${SUPABASE_URL}/functions/v1/create-coordinator`;
-
     const res = await fetch(fnUrl, {
       method: "POST",
       headers: {
@@ -98,30 +95,123 @@ function wireCreateAccount() {
     });
 
     const text = await res.text();
-    if (!res.ok) {
-      console.error("Create account failed:", res.status, text);
-      return show(userMsg, `HTTP ${res.status} | ${text}`, true);
-    }
+    if (!res.ok) return show(userMsg, `HTTP ${res.status} | ${text}`, true);
 
     let out;
-    try {
-      out = JSON.parse(text);
-    } catch {
-      return show(userMsg, "Unexpected response from server.", true);
-    }
-
+    try { out = JSON.parse(text); } catch { out = null; }
     if (!out?.ok) return show(userMsg, out?.msg || "Create failed.", true);
 
     show(userMsg, "Account created ✅");
 
-    // Reset form + keep role sane + refresh custom dropdown UI
     form.reset();
     const roleSel = document.getElementById("newRole");
     if (roleSel) {
       roleSel.value = "coordinator";
       refreshSelect(roleSel);
     }
+
+    await refreshUsers();
   });
+}
+
+// -------------------- Manage Users (Search + Delete via Edge Function) --------------------
+function wireManageUsers() {
+  const userSearch = document.getElementById("userSearch");
+  const userRefreshBtn = document.getElementById("userRefreshBtn");
+  const userRows = document.getElementById("userRows");
+
+  if (!userSearch || !userRefreshBtn || !userRows) return;
+
+  let t = null;
+  const trigger = () => {
+    clearTimeout(t);
+    t = setTimeout(refreshUsers, 180);
+  };
+
+  userSearch.addEventListener("input", trigger);
+  userRefreshBtn.addEventListener("click", refreshUsers);
+
+  userRows.addEventListener("click", async (e) => {
+    const btn = e.target.closest("button[data-del-user]");
+    if (!btn) return;
+
+    const userId = btn.getAttribute("data-del-user");
+    const name = btn.getAttribute("data-name") || "this user";
+    if (!userId) return;
+
+    const ok = confirm(`Delete ${name}? This will remove login access.`);
+    if (!ok) return;
+
+    hide(userMgmtMsg);
+    show(userMgmtMsg, "Deleting…");
+
+    const { data: sessData } = await sb.auth.getSession();
+    const token = sessData?.session?.access_token;
+    if (!token) return show(userMgmtMsg, "Session missing. Login again.", true);
+
+    const fnUrl = `${SUPABASE_URL}/functions/v1/delete-user`;
+    const res = await fetch(fnUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ user_id: userId }),
+    });
+
+    const text = await res.text();
+    if (!res.ok) return show(userMgmtMsg, `HTTP ${res.status} | ${text}`, true);
+
+    let out;
+    try { out = JSON.parse(text); } catch { out = null; }
+    if (!out?.ok) return show(userMgmtMsg, out?.msg || "Delete failed.", true);
+
+    show(userMgmtMsg, "User deleted ✅");
+    await refreshUsers();
+  });
+}
+
+async function refreshUsers() {
+  const userRows = document.getElementById("userRows");
+  const userSearch = document.getElementById("userSearch");
+  if (!userRows) return;
+
+  hide(userMgmtMsg);
+  userRows.innerHTML = `<tr><td colspan="4">Loading…</td></tr>`;
+
+  const text = (userSearch?.value || "").trim();
+  let query = sb.from("profiles").select("id, display_name, role, email").order("display_name");
+
+  if (text) {
+    const esc = text.replace(/,/g, " ");
+    query = query.or(`display_name.ilike.%${esc}%,email.ilike.%${esc}%`);
+  }
+
+  // keep small for UI
+  const { data, error } = await query.limit(50);
+  if (error) {
+    userRows.innerHTML = `<tr><td colspan="4">${escapeHtml(error.message)}</td></tr>`;
+    return;
+  }
+
+  if (!data?.length) {
+    userRows.innerHTML = `<tr><td colspan="4">No users found.</td></tr>`;
+    return;
+  }
+
+  userRows.innerHTML = data.map(p => `
+    <tr>
+      <td>${escapeHtml(p.display_name || "")}</td>
+      <td>${escapeHtml(p.email || "")}</td>
+      <td>${escapeHtml(p.role || "")}</td>
+      <td>
+        <button class="btn danger" data-del-user="${p.id}" data-name="${escapeHtml(p.display_name || p.email || "user")}">
+          Delete
+        </button>
+      </td>
+    </tr>
+  `).join("");
 }
 
 // -------------------- Excel Upload (Students) --------------------
@@ -223,6 +313,92 @@ function wireFilePicker() {
   });
 }
 
+// -------------------- Remove Students (Search + Delete) --------------------
+function wireStudentSearch() {
+  const stuSearch = document.getElementById("stuSearch");
+  const stuRefreshBtn = document.getElementById("stuRefreshBtn");
+  const stuRows = document.getElementById("stuRows");
+  const stuSearchMeta = document.getElementById("stuSearchMeta");
+
+  if (!stuSearch || !stuRefreshBtn || !stuRows) return;
+
+  const run = async () => {
+    hide(stuDelMsg);
+    const text = stuSearch.value.trim();
+    if (!text) {
+      stuRows.innerHTML = `<tr><td colspan="6">Type something to search…</td></tr>`;
+      if (stuSearchMeta) stuSearchMeta.textContent = "";
+      return;
+    }
+
+    stuRows.innerHTML = `<tr><td colspan="6">Searching…</td></tr>`;
+
+    const esc = text.replace(/,/g, " ");
+    const { data, error } = await sb
+      .from("students")
+      .select("id, child_name, student_name, class_name, section, sr_number")
+      .or(`child_name.ilike.%${esc}%,student_name.ilike.%${esc}%,sr_number.ilike.%${esc}%`)
+      .order("child_name")
+      .limit(50);
+
+    if (error) {
+      stuRows.innerHTML = `<tr><td colspan="6">${escapeHtml(error.message)}</td></tr>`;
+      return;
+    }
+
+    if (stuSearchMeta) stuSearchMeta.textContent = `Showing ${data?.length || 0} results (max 50).`;
+
+    if (!data?.length) {
+      stuRows.innerHTML = `<tr><td colspan="6">No students found.</td></tr>`;
+      return;
+    }
+
+    stuRows.innerHTML = data.map(s => `
+      <tr>
+        <td>${escapeHtml(s.child_name)}</td>
+        <td>${escapeHtml(s.student_name)}</td>
+        <td>${escapeHtml(s.class_name)}</td>
+        <td>${escapeHtml(s.section)}</td>
+        <td>${escapeHtml(s.sr_number)}</td>
+        <td><button class="btn danger" data-del-stu="${s.id}" data-name="${escapeHtml(s.child_name)}">Delete</button></td>
+      </tr>
+    `).join("");
+  };
+
+  let t = null;
+  stuSearch.addEventListener("input", () => {
+    clearTimeout(t);
+    t = setTimeout(run, 200);
+  });
+
+  stuRefreshBtn.addEventListener("click", run);
+
+  stuRows.addEventListener("click", async (e) => {
+    const btn = e.target.closest("button[data-del-stu]");
+    if (!btn) return;
+
+    const id = btn.getAttribute("data-del-stu");
+    const name = btn.getAttribute("data-name") || "this student";
+    if (!id) return;
+
+    const ok = confirm(`Delete ${name} from students database?`);
+    if (!ok) return;
+
+    hide(stuDelMsg);
+    show(stuDelMsg, "Deleting…");
+
+    const { error } = await sb.from("students").delete().eq("id", id);
+    if (error) return show(stuDelMsg, error.message, true);
+
+    show(stuDelMsg, "Student deleted ✅");
+    await run();
+    await refreshStudentsCount();
+  });
+
+  // initial hint
+  stuRows.innerHTML = `<tr><td colspan="6">Type something to search…</td></tr>`;
+}
+
 // -------------------- Mediums --------------------
 function wireAddMedium() {
   const form = document.getElementById("addMediumForm");
@@ -295,7 +471,6 @@ async function refreshMediums() {
     )
     .join("");
 
-  // Save time_min
   mediumRows.querySelectorAll("button[data-act='saveTime']").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const id = Number(btn.dataset.id);
@@ -309,7 +484,6 @@ async function refreshMediums() {
     });
   });
 
-  // Toggle active
   mediumRows.querySelectorAll("button[data-act='toggle']").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const id = Number(btn.dataset.id);
@@ -466,6 +640,7 @@ async function refreshTicketOptions() {
 // -------------------- Refresh helpers --------------------
 async function refreshAll() {
   await Promise.all([
+    refreshUsers(),
     refreshMediums(),
     refreshObjectives(),
     refreshTicketOptions(),
@@ -475,9 +650,7 @@ async function refreshAll() {
 
 async function refreshStudentsCount() {
   const uploadMeta = document.getElementById("uploadMeta");
-  const { count, error } = await sb
-    .from("students")
-    .select("id", { count: "exact", head: true });
+  const { count, error } = await sb.from("students").select("id", { count: "exact", head: true });
 
   if (error) {
     if (uploadMeta) uploadMeta.textContent = "Students in DB: ?";
