@@ -10,103 +10,103 @@
   <div class="container">
     <div id="navHolder"></div>
 
-    <div class="grid">
-      <div class="card">
-        <h2>New Touchpoint Entry</h2>
-        <p class="muted">Fill the form and submit. Student details and time are auto-filled.</p>
+    <div class="card">
+      <h2>New Touchpoint Entry</h2>
+      <p class="muted">You can add multiple touchpoints using <b>Add</b>, then save all at once.</p>
 
-        <form id="tpForm" class="form">
+      <form id="tpForm">
+        <div id="entries" class="tp-entries"></div>
 
-          <!-- Row 1 -->
-          <div class="field span4">
-            <label>Child Name</label>
-            <select id="childSelect" required data-placeholder="Select child...">
-              <option value=""></option>
-            </select>
+        <div class="row" style="justify-content:space-between;align-items:center;margin-top:14px;gap:10px;">
+          <button id="addEntryBtn" class="btn" type="button">+ Add</button>
+
+          <div class="row" style="gap:10px;">
+            <button id="resetBtn" class="btn" type="button">Reset</button>
+            <button class="btn primary" type="submit">Save Entry</button>
           </div>
+        </div>
+      </form>
 
-          <div class="field span4">
-            <label>Medium</label>
-            <select id="mediumSelect" required data-placeholder="Select medium...">
-              <option value=""></option>
-            </select>
-          </div>
-
-          <div class="field span4">
-            <label>Objective</label>
-            <select id="objectiveSelect" required data-placeholder="Select objective...">
-              <option value=""></option>
-            </select>
-          </div>
-
-          <!-- Row 2 -->
-          <div class="field span6">
-            <label>Positives / Strengths / What good we are doing</label>
-            <textarea id="positives" rows="4" placeholder="Write positives / strengths..."></textarea>
-          </div>
-
-          <div class="field span6">
-            <label>Suggestion / Weakness / What we or the student need to improve /Questions</label>
-            <textarea id="suggestion" rows="4" placeholder="Write suggestions / improvements / questions..."></textarea>
-          </div>
-
-          <!-- Row 3 (Ticket section) -->
-          <div class="field span3">
-            <label>Ticket raised?</label>
-            <select id="ticketRaised" required data-placeholder="Ticket raised?">
-              <option value="">Loading...</option>
-            </select>
-          </div>
-
-          <div class="field span3">
-            <label>Ticket Number <span class="muted">(Optional)</span></label>
-            <input id="ticketNumber" type="text" placeholder="Optional ticket number" />
-          </div>
-
-          <div class="field span3">
-            <label>Time (Auto)</label>
-            <input id="timeAuto" type="text" readonly placeholder="Auto from Medium" />
-          </div>
-
-          <div class="field span3">
-            <label>Timestamp (Auto)</label>
-            <input id="tsAuto" type="text" readonly placeholder="Auto at submit" />
-          </div>
-
-          <!-- Row 4 (Student auto-details) -->
-          <div class="field span3">
-            <label>Name (Auto)</label>
-            <input id="studentName" type="text" readonly />
-          </div>
-
-          <div class="field span3">
-            <label>Class (Auto)</label>
-            <input id="className" type="text" readonly />
-          </div>
-
-          <div class="field span3">
-            <label>Section (Auto)</label>
-            <input id="section" type="text" readonly />
-          </div>
-
-          <div class="field span3">
-            <label>SR Number (Auto)</label>
-            <input id="srNumber" type="text" readonly />
-          </div>
-
-          <!-- Actions -->
-          <div class="field span12">
-            <div class="row" style="justify-content:flex-end;">
-              <button id="resetBtn" class="btn" type="button">Reset</button>
-              <button class="btn primary" type="submit">Save Entry</button>
-            </div>
-          </div>
-        </form>
-
-        <div id="msg" class="notice" style="display:none;"></div>
-      </div>
+      <div id="msg" class="notice" style="display:none;margin-top:12px;"></div>
     </div>
   </div>
+
+  <!-- template for each entry block -->
+  <template id="entryTpl">
+    <div class="tp-entry">
+      <div class="tp-entry-head">
+        <div class="tp-entry-title">Entry <span class="tp-entry-n"></span></div>
+        <button type="button" class="btn danger tp-remove">Remove</button>
+      </div>
+
+      <div class="form">
+        <div class="field span4">
+          <label>Child Name</label>
+          <select data-field="child" data-placeholder="Select child..."></select>
+        </div>
+
+        <div class="field span4">
+          <label>Medium</label>
+          <select data-field="medium" data-placeholder="Select medium..."></select>
+        </div>
+
+        <div class="field span4">
+          <label>Objective</label>
+          <select data-field="objective" data-placeholder="Select objective..."></select>
+        </div>
+
+        <div class="field span6">
+          <label>Positives / Strengths / What good we are doing</label>
+          <textarea data-field="positives" rows="4" placeholder="Write positives..."></textarea>
+        </div>
+
+        <div class="field span6">
+          <label>Suggestion / Weakness / What we or the student need to improve /Questions</label>
+          <textarea data-field="suggestion" rows="4" placeholder="Write suggestions..."></textarea>
+        </div>
+
+        <div class="field span3">
+          <label>Ticket raised? (Optional)</label>
+          <select data-field="ticketRaised" data-placeholder="Ticket raised? (Optional)"></select>
+        </div>
+
+        <div class="field span3">
+          <label>Ticket Number (Optional)</label>
+          <input data-field="ticketNumber" type="text" placeholder="Optional ticket number" />
+        </div>
+
+        <div class="field span3">
+          <label>Time (Auto)</label>
+          <input data-field="timeAuto" type="text" readonly />
+        </div>
+
+        <div class="field span3">
+          <label>Timestamp (Auto)</label>
+          <input data-field="tsAuto" type="text" placeholder="Auto at submit" readonly />
+        </div>
+
+        <div class="field span3">
+          <label>Name (Auto)</label>
+          <input data-field="studentName" type="text" readonly />
+        </div>
+
+        <div class="field span3">
+          <label>Class (Auto)</label>
+          <input data-field="className" type="text" readonly />
+        </div>
+
+        <div class="field span3">
+          <label>Section (Auto)</label>
+          <input data-field="section" type="text" readonly />
+        </div>
+
+        <div class="field span3">
+          <label>SR Number (Auto)</label>
+          <input data-field="srNumber" type="text" readonly />
+        </div>
+      </div>
+    </div>
+  </template>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script type="module" src="js/entry.js"></script>
