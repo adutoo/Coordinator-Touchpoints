@@ -36,10 +36,9 @@
           <div class="field span6">
             <label>Role</label>
             <select id="newRole" data-placeholder="Select role...">
-  <option value="coordinator" selected>Coordinator</option>
-  <option value="admin">Admin</option>
-</select>
-
+              <option value="coordinator" selected>Coordinator</option>
+              <option value="admin">Admin</option>
+            </select>
           </div>
 
           <div class="field span12">
@@ -48,6 +47,39 @@
         </form>
 
         <div id="userMsg" class="notice" style="display:none;"></div>
+      </div>
+
+      <!-- Manage Accounts (Delete users) -->
+      <div class="card span6">
+        <h2>Manage Accounts</h2>
+        <p class="muted">Search and delete coordinators/admin. (Admin-only)</p>
+
+        <div class="form">
+          <div class="field span8">
+            <label>Search (name/email)</label>
+            <input id="userSearch" type="text" placeholder="Type to search…" />
+          </div>
+          <div class="field span4">
+            <label>&nbsp;</label>
+            <button id="userRefreshBtn" class="btn" type="button">Refresh</button>
+          </div>
+        </div>
+
+        <div class="tablewrap maxh">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="userRows"></tbody>
+          </table>
+        </div>
+
+        <div id="userMgmtMsg" class="notice" style="display:none;"></div>
       </div>
 
       <!-- Upload students -->
@@ -85,6 +117,43 @@
         </div>
 
         <div id="stuMsg" class="notice" style="display:none;"></div>
+      </div>
+
+      <!-- Remove Students (Search + Delete) -->
+      <div class="card span6">
+        <h2>Remove Students</h2>
+        <p class="muted">Search by Child Name / Student Name / SR No and delete.</p>
+
+        <div class="form">
+          <div class="field span8">
+            <label>Search</label>
+            <input id="stuSearch" type="text" placeholder="e.g., Mahatva / 1012 / 9C" />
+          </div>
+          <div class="field span4">
+            <label>&nbsp;</label>
+            <button id="stuRefreshBtn" class="btn" type="button">Search</button>
+          </div>
+        </div>
+
+        <div class="muted" id="stuSearchMeta" style="margin-top:8px;"></div>
+
+        <div class="tablewrap maxh" style="margin-top:10px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Child Name</th>
+                <th>Name</th>
+                <th>Class</th>
+                <th>Section</th>
+                <th>SR</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="stuRows"></tbody>
+          </table>
+        </div>
+
+        <div id="stuDelMsg" class="notice" style="display:none;"></div>
       </div>
 
       <!-- Manage Mediums -->
