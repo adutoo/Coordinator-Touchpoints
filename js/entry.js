@@ -4,28 +4,18 @@ import { mountNav } from "./nav.js";
 import { getMe, getMyProfile } from "./auth.js";
 import { enhanceSelect, refreshSelect } from "./customSelect.js";
 
-const childSelect = document.getElementById("childSelect");
-const mediumSelect = document.getElementById("mediumSelect");
-const objectiveSelect = document.getElementById("objectiveSelect");
-
-const positives = document.getElementById("positives");
-const suggestion = document.getElementById("suggestion");
-const ticketRaised = document.getElementById("ticketRaised"); // required
-const ticketNumber = document.getElementById("ticketNumber"); // optional
-const timeAuto = document.getElementById("timeAuto");
-const tsAuto = document.getElementById("tsAuto"); // optional field in entry.html
-
-const studentName = document.getElementById("studentName");
-const className = document.getElementById("className");
-const section = document.getElementById("section");
-const srNumber = document.getElementById("srNumber");
-
+const entriesEl = document.getElementById("entries");
+const tpl = document.getElementById("entryTpl");
+const addEntryBtn = document.getElementById("addEntryBtn");
 const form = document.getElementById("tpForm");
 const resetBtn = document.getElementById("resetBtn");
 const msg = document.getElementById("msg");
 
 let students = [];
+let studentsByChild = new Map();
 let mediums = [];
+let objectives = [];
+let ticketOptions = [];
 
 function show(text, isError = false) {
   msg.style.display = "block";
@@ -33,27 +23,39 @@ function show(text, isError = false) {
   msg.style.color = isError ? "rgba(255,200,210,0.95)" : "rgba(255,255,255,0.72)";
   msg.textContent = text;
 }
-function hideMsg() {
-  msg.style.display = "none";
+function hideMsg() { msg.style.display = "none"; }
+
+function pad2(n) { return String(n).padStart(2, "0"); }
+function fmtLocalTS(d) {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 }
 
-function fillStudentAuto(childName) {
-  const s = students.find((x) => x.child_name === childName);
-  studentName.value = s?.student_name ?? "";
-  className.value = s?.class_name ?? "";
-  section.value = s?.section ?? "";
-  srNumber.value = s?.sr_number ?? "";
+function escText(s) {
+  return String(s ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+function escAttr(s) {
+  return escText(s).replaceAll('"', "&quot;");
 }
 
-function getMediumTimeMin(label) {
-  const m = mediums.find((x) => x.label === label);
-  return Math.max(1, Number(m?.time_min ?? 1));
-}
+// ✅ fetch ALL rows (Supabase often returns only ~1000 if not paged)
+async function fetchAll(table, selectCols, orderCol) {
+  const out = [];
+  const chunk = 1000;
+  let offset = 0;
 
-function fillTimeFromMedium(mediumLabel) {
-  const minutes = getMediumTimeMin(mediumLabel);
-  timeAuto.value = `${minutes} min`;
-  return minutes;
+  while (true) {
+    let q = sb.from(table).select(selectCols).range(offset, offset + chunk - 1);
+    if (orderCol) q = q.order(orderCol);
+
+    const { data, error } = await q;
+    if (error) throw error;
+    if (!data?.length) break;
+
+    out.push(...data);
+    offset += data.length;
+    if (data.length < chunk) break;
+  }
+  return out;
 }
 
 function isoWeekNumber(dateObj) {
@@ -65,207 +67,262 @@ function isoWeekNumber(dateObj) {
   return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
 }
 
-function refreshAllCustomSelects() {
-  refreshSelect(childSelect);
-  refreshSelect(mediumSelect);
-  refreshSelect(objectiveSelect);
-  refreshSelect(ticketRaised);
+function getMediumTimeMin(label) {
+  const m = mediums.find(x => x.label === label);
+  return Math.max(1, Number(m?.time_min ?? 1));
 }
 
-/**
- * IMPORTANT FIX:
- * Supabase/PostgREST often returns limited rows (commonly 1k) unless paginated.
- * This ensures all ~2100 students are loaded into the dropdown.
- */
-async function fetchAllStudents() {
-  const pageSize = 1000;
-  let from = 0;
-  const all = [];
-
-  while (true) {
-    const { data, error } = await sb
-      .from("students")
-      .select("child_name,student_name,class_name,section,sr_number")
-      .order("child_name", { ascending: true })
-      .range(from, from + pageSize - 1);
-
-    if (error) throw error;
-
-    all.push(...(data || []));
-    if (!data || data.length < pageSize) break;
-
-    from += pageSize;
-  }
-
-  return all;
+function buildOptions(list, valueKey = "label", labelKey = "label") {
+  return `<option value=""></option>` + list.map(x => {
+    const v = escAttr(x[valueKey]);
+    const t = escText(x[labelKey]);
+    return `<option value="${v}">${t}</option>`;
+  }).join("");
 }
 
-function buildSelectOptions(selectEl, items, getLabel, getValue) {
-  selectEl.innerHTML = "";
-  selectEl.appendChild(new Option("", "")); // empty option for placeholder
+function blockRefs(block) {
+  const q = (sel) => block.querySelector(sel);
+  return {
+    child: q('select[data-field="child"]'),
+    medium: q('select[data-field="medium"]'),
+    objective: q('select[data-field="objective"]'),
+    positives: q('textarea[data-field="positives"]'),
+    suggestion: q('textarea[data-field="suggestion"]'),
+    ticketRaised: q('select[data-field="ticketRaised"]'),
+    ticketNumber: q('input[data-field="ticketNumber"]'),
+    timeAuto: q('input[data-field="timeAuto"]'),
+    tsAuto: q('input[data-field="tsAuto"]'),
+    studentName: q('input[data-field="studentName"]'),
+    className: q('input[data-field="className"]'),
+    section: q('input[data-field="section"]'),
+    srNumber: q('input[data-field="srNumber"]'),
+    removeBtn: q(".tp-remove"),
+    nEl: q(".tp-entry-n"),
+  };
+}
 
-  for (const item of items) {
-    const label = getLabel(item);
-    const value = getValue(item);
-    selectEl.appendChild(new Option(label, value));
+function fillStudentAuto(refs) {
+  const s = studentsByChild.get(refs.child.value);
+  refs.studentName.value = s?.student_name ?? "";
+  refs.className.value = s?.class_name ?? "";
+  refs.section.value = s?.section ?? "";
+  refs.srNumber.value = s?.sr_number ?? "";
+}
+
+function fillTimeAuto(refs) {
+  const minutes = getMediumTimeMin(refs.medium.value);
+  refs.timeAuto.value = `${minutes} min`;
+  return minutes;
+}
+
+function refreshNumbers() {
+  const blocks = Array.from(entriesEl.querySelectorAll(".tp-entry"));
+  blocks.forEach((b, i) => {
+    const refs = blockRefs(b);
+    refs.nEl.textContent = `#${i + 1}`;
+    refs.removeBtn.style.display = blocks.length > 1 ? "inline-flex" : "none";
+  });
+}
+
+function enhanceBlockSelects(refs) {
+  // child: search enabled (big list)
+  enhanceSelect(refs.child, { placeholder: "Select child...", search: true, searchThreshold: 0 });
+
+  enhanceSelect(refs.medium, { placeholder: "Select medium..." });
+  enhanceSelect(refs.objective, { placeholder: "Select objective..." });
+
+  // ticket optional
+  enhanceSelect(refs.ticketRaised, { placeholder: "Ticket raised? (Optional)" });
+
+  refreshSelect(refs.child);
+  refreshSelect(refs.medium);
+  refreshSelect(refs.objective);
+  refreshSelect(refs.ticketRaised);
+}
+
+function createBlock(cloneFrom = null) {
+  const node = tpl.content.firstElementChild.cloneNode(true);
+  const refs = blockRefs(node);
+
+  // inject options
+  refs.child.innerHTML = `<option value=""></option>` + students.map(s =>
+    `<option value="${escAttr(s.child_name)}">${escText(s.child_name)}</option>`
+  ).join("");
+
+  refs.medium.innerHTML = buildOptions(mediums, "label", "label");
+  refs.objective.innerHTML = buildOptions(objectives, "label", "label");
+  refs.ticketRaised.innerHTML = buildOptions(ticketOptions, "label", "label");
+
+  // default
+  refs.timeAuto.value = "1 min";
+  refs.tsAuto.value = "";
+
+  // events
+  refs.child.addEventListener("change", () => {
+    fillStudentAuto(refs);
+    refreshSelect(refs.child);
+  });
+  refs.medium.addEventListener("change", () => {
+    fillTimeAuto(refs);
+    refreshSelect(refs.medium);
+  });
+
+  refs.removeBtn.addEventListener("click", () => {
+    node.remove();
+    refreshNumbers();
+  });
+
+  // clone values if needed
+  if (cloneFrom) {
+    const src = blockRefs(cloneFrom);
+
+    refs.child.value = src.child.value;
+    refs.medium.value = src.medium.value;
+    refs.objective.value = src.objective.value;
+    refs.ticketRaised.value = src.ticketRaised.value;
+    refs.ticketNumber.value = src.ticketNumber.value;
+
+    refs.positives.value = src.positives.value;
+    refs.suggestion.value = src.suggestion.value;
+
+    fillStudentAuto(refs);
+    fillTimeAuto(refs);
+  } else {
+    fillStudentAuto(refs);
+    fillTimeAuto(refs);
   }
+
+  entriesEl.appendChild(node);
+  enhanceBlockSelects(refs);
+  refreshNumbers();
 }
 
 (async () => {
   await mountNav("entry");
+  hideMsg();
 
   try {
-    show("Loading data…");
-
-    // Load students in pages + other dropdowns together
-    const [allStudents, medR, objR, tickR] = await Promise.all([
-      fetchAllStudents(),
-      sb
-        .from("mediums")
-        .select("label,time_min,is_active")
-        .eq("is_active", true)
-        .order("sort_order")
-        .order("label"),
-      sb
-        .from("objectives")
-        .select("label,is_active")
-        .eq("is_active", true)
-        .order("sort_order")
-        .order("label"),
-      sb
-        .from("ticket_raised_options")
-        .select("label,is_active")
-        .eq("is_active", true)
-        .order("sort_order")
-        .order("label"),
+    const [stu, med, obj, tick] = await Promise.all([
+      fetchAll("students", "child_name,student_name,class_name,section,sr_number", "child_name"),
+      sb.from("mediums").select("label,time_min,is_active,sort_order").eq("is_active", true).order("sort_order").order("label"),
+      sb.from("objectives").select("label,is_active,sort_order").eq("is_active", true).order("sort_order").order("label"),
+      sb.from("ticket_raised_options").select("label,is_active,sort_order").eq("is_active", true).order("sort_order").order("label"),
     ]);
 
-    if (medR.error) return show(medR.error.message, true);
-    if (objR.error) return show(objR.error.message, true);
-    if (tickR.error) return show(tickR.error.message, true);
+    students = stu || [];
+    studentsByChild = new Map(students.map(s => [s.child_name, s]));
 
-    students = allStudents || [];
-    mediums = medR.data || [];
+    mediums = med.data || [];
+    objectives = obj.data || [];
+    ticketOptions = tick.data || [];
 
-    // Build options safely
-    buildSelectOptions(childSelect, students, (s) => s.child_name, (s) => s.child_name);
-    buildSelectOptions(mediumSelect, mediums, (m) => m.label, (m) => m.label);
-    buildSelectOptions(objectiveSelect, objR.data || [], (o) => o.label, (o) => o.label);
-    buildSelectOptions(ticketRaised, tickR.data || [], (t) => t.label, (t) => t.label);
-
-    // Enhance dropdowns
-    enhanceSelect(childSelect, { placeholder: "Select child...", search: true, searchThreshold: 0 });
-    enhanceSelect(mediumSelect, { placeholder: "Select medium..." });
-    enhanceSelect(objectiveSelect, { placeholder: "Select objective..." });
-    enhanceSelect(ticketRaised, { placeholder: "Ticket raised?" });
-
-    // Defaults
-    fillStudentAuto("");
-    timeAuto.value = "1 min";
-    if (tsAuto) tsAuto.value = "";
-
-    refreshAllCustomSelects();
-    hideMsg();
-
-    // Helpful debug
-    // console.log("Loaded students:", students.length);
-  } catch (err) {
-    console.error(err);
-    show(err?.message || String(err), true);
+    // first block
+    createBlock(null);
+    show(`Loaded ${students.length} students ✅`);
+    setTimeout(hideMsg, 1200);
+  } catch (e) {
+    console.error(e);
+    show(e?.message || String(e), true);
   }
 })();
 
-childSelect.addEventListener("change", () => fillStudentAuto(childSelect.value));
-mediumSelect.addEventListener("change", () => fillTimeFromMedium(mediumSelect.value));
+addEntryBtn.addEventListener("click", () => {
+  const blocks = Array.from(entriesEl.querySelectorAll(".tp-entry"));
+  const last = blocks[blocks.length - 1] || null;
+  createBlock(last);
+});
 
 resetBtn.addEventListener("click", () => {
-  form.reset();
-
-  childSelect.value = "";
-  mediumSelect.value = "";
-  objectiveSelect.value = "";
-  ticketRaised.value = "";
-
-  fillStudentAuto("");
-  timeAuto.value = "1 min";
-  if (tsAuto) tsAuto.value = "";
-
-  refreshAllCustomSelects();
   hideMsg();
+  entriesEl.innerHTML = "";
+  createBlock(null);
 });
 
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   hideMsg();
 
-  if (!childSelect.value || !mediumSelect.value || !objectiveSelect.value) {
-    return show("Please select Child Name, Medium, and Objective.", true);
-  }
-  if (!ticketRaised.value) {
-    return show("Please select Ticket raised?", true);
-  }
-
   const me = await getMe();
   if (!me) return show("Not logged in.", true);
 
   const profile = await getMyProfile(me.id);
 
+  const blocks = Array.from(entriesEl.querySelectorAll(".tp-entry"));
+  if (!blocks.length) return show("Add at least one entry.", true);
+
   const now = new Date();
   const week = isoWeekNumber(now);
 
-  const s = students.find((x) => x.child_name === childSelect.value);
+  const payloads = [];
 
-  const time_min = fillTimeFromMedium(mediumSelect.value);
-  const timeText = `${time_min} min`;
+  for (let i = 0; i < blocks.length; i++) {
+    const refs = blockRefs(blocks[i]);
 
-  if (tsAuto) tsAuto.value = now.toLocaleString();
+    const child_name = refs.child.value;
+    const medium = refs.medium.value;
+    const objective = refs.objective.value;
 
-  const payload = {
-    child_name: childSelect.value,
-    medium: mediumSelect.value,
-    objective: objectiveSelect.value,
+    if (!child_name || !medium || !objective) {
+      return show(`Entry #${i + 1}: Please select Child Name, Medium, and Objective.`, true);
+    }
 
-    positives: positives.value.trim(),
-    suggestion: suggestion.value.trim(),
+    const s = studentsByChild.get(child_name);
+    const positives = refs.positives.value.trim();
+    const suggestion = refs.suggestion.value.trim();
 
-    ticket_raised: ticketRaised.value,
-    ticket_number: (ticketNumber.value || "").trim(), // optional
+    // ✅ Ticket raised OPTIONAL now
+    const ticket_raised = refs.ticketRaised.value ? refs.ticketRaised.value : null;
 
-    owner_user_id: me.id,
-    owner_email: me.email,
-    correct_owner: profile.display_name,
-    owner_name: profile.display_name,
+    const time_min = fillTimeAuto(refs);
+    const timeText = `${time_min} min`;
 
-    touch_timestamp: now.toISOString(),
+    // ✅ Comments Concat = positives + "\n" + suggestion (only add \n when both exist)
+    const comments_concat =
+      positives && suggestion ? `${positives}\n${suggestion}` :
+      positives ? positives :
+      suggestion ? suggestion : "";
 
-    student_name: s?.student_name ?? "",
-    class_name: s?.class_name ?? "",
-    section: s?.section ?? "",
-    sr_number: s?.sr_number ?? "",
+    payloads.push({
+      child_name,
+      medium,
+      objective,
+      positives,
+      suggestion,
 
-    week,
-    month: now.getMonth() + 1,
-    year: now.getFullYear(),
+      ticket_raised,
+      ticket_number: (refs.ticketNumber.value || "").trim(),
 
-    comments_concat: positives.value.trim(),
-    time: timeText,
-    time_min,
-  };
+      owner_user_id: me.id,
+      owner_email: me.email,
+      correct_owner: profile.display_name,
+      owner_name: profile.display_name,
 
-  const { error } = await sb.from("touchpoints").insert(payload);
+      touch_timestamp: now.toISOString(),
+
+      student_name: s?.student_name ?? "",
+      class_name: s?.class_name ?? "",
+      section: s?.section ?? "",
+      sr_number: s?.sr_number ?? "",
+
+      week,
+      month: now.getMonth() + 1,
+      year: now.getFullYear(),
+
+      comments_concat,
+      time: timeText,
+      time_min,
+    });
+
+    refs.tsAuto.value = fmtLocalTS(now);
+  }
+
+  show(`Saving ${payloads.length} entries…`);
+
+  const { error } = await sb.from("touchpoints").insert(payloads);
   if (error) return show(error.message, true);
 
-  show("Saved! ✅");
+  show(`Saved ${payloads.length} entries ✅`);
 
-  form.reset();
-  childSelect.value = "";
-  mediumSelect.value = "";
-  objectiveSelect.value = "";
-  ticketRaised.value = "";
-
-  fillStudentAuto("");
-  timeAuto.value = "1 min";
-  if (tsAuto) tsAuto.value = "";
-
-  refreshAllCustomSelects();
+  entriesEl.innerHTML = "";
+  createBlock(null);
 });
