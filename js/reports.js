@@ -1,6 +1,7 @@
 // js/reports.js
 import { sb } from "./supabaseClient.js";
 import { mountNav } from "./nav.js";
+import { enhanceSelect, refreshSelect } from "./customSelect.js";
 
 const coordFilter = document.getElementById("coordFilter");
 const fromDate = document.getElementById("fromDate");
@@ -26,80 +27,109 @@ const pageInfo = document.getElementById("pageInfo");
 const PAGE_SIZE = 100;
 let page = 0;
 let totalCount = 0;
+let isAdmin = false;
 
-function show(text, isError=false){
+function show(text, isError = false) {
   msg.style.display = "block";
   msg.style.borderColor = isError ? "rgba(255,77,109,0.55)" : "rgba(124,92,255,0.55)";
+  msg.style.color = isError ? "rgba(255,200,210,0.95)" : "rgba(255,255,255,0.72)";
   msg.textContent = text;
 }
+function hideMsg() { msg.style.display = "none"; }
+function td(v) { return (v ?? "").toString(); }
+function pad2(n) { return String(n).padStart(2, "0"); }
 
-function hideMsg(){ msg.style.display = "none"; }
-
-function td(v){ return (v ?? "").toString(); }
-
-function toStartISO(yyyy_mm_dd){
-  if (!yyyy_mm_dd) return null;
-  const [y,m,d] = yyyy_mm_dd.split("-").map(Number);
-  return new Date(y, m-1, d, 0,0,0,0).toISOString();
-}
-function toEndISO(yyyy_mm_dd){
-  if (!yyyy_mm_dd) return null;
-  const [y,m,d] = yyyy_mm_dd.split("-").map(Number);
-  return new Date(y, m-1, d, 23,59,59,999).toISOString();
+// Excel-safe: YYYY-MM-DD HH:mm:ss
+function fmtTS(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 }
 
-function setDefaultRangeLast7Days(){
+// ✅ robust date input parsing (supports YYYY-MM-DD and DD-MM-YYYY)
+function parseDateInput(s) {
+  if (!s) return null;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [y, m, d] = s.split("-").map(Number);
+    return { y, m, d };
+  }
+  if (/^\d{2}-\d{2}-\d{4}$/.test(s)) {
+    const [d, m, y] = s.split("-").map(Number);
+    return { y, m, d };
+  }
+  return null;
+}
+
+function toStartISO(val) {
+  const p = parseDateInput(val);
+  if (!p) return null;
+  return new Date(p.y, p.m - 1, p.d, 0, 0, 0, 0).toISOString();
+}
+
+function toEndISO(val) {
+  const p = parseDateInput(val);
+  if (!p) return null;
+  return new Date(p.y, p.m - 1, p.d, 23, 59, 59, 999).toISOString();
+}
+
+function setDefaultRangeLast7Days() {
   const now = new Date();
   const to = new Date(now);
   const from = new Date(now);
   from.setDate(from.getDate() - 6);
 
-  const pad = (n)=> String(n).padStart(2,"0");
-  const f = `${from.getFullYear()}-${pad(from.getMonth()+1)}-${pad(from.getDate())}`;
-  const t = `${to.getFullYear()}-${pad(to.getMonth()+1)}-${pad(to.getDate())}`;
+  const f = `${from.getFullYear()}-${pad2(from.getMonth() + 1)}-${pad2(from.getDate())}`;
+  const t = `${to.getFullYear()}-${pad2(to.getMonth() + 1)}-${pad2(to.getDate())}`;
 
   fromDate.value = f;
   toDate.value = t;
 }
 
-function setRangeToday(){
+function setRangeToday() {
   const now = new Date();
-  const pad = (n)=> String(n).padStart(2,"0");
-  const d = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  const d = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
   fromDate.value = d;
   toDate.value = d;
 }
 
-function setRangeThisWeek(){
+function setRangeThisWeek() {
   const now = new Date();
   const x = new Date(now);
-  x.setHours(0,0,0,0);
+  x.setHours(0, 0, 0, 0);
   const day = x.getDay(); // Sun=0
   const diff = (day + 6) % 7; // Monday=0
   x.setDate(x.getDate() - diff);
-  const weekStart = x;
 
-  const pad = (n)=> String(n).padStart(2,"0");
-  const f = `${weekStart.getFullYear()}-${pad(weekStart.getMonth()+1)}-${pad(weekStart.getDate())}`;
-  const t = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  const f = `${x.getFullYear()}-${pad2(x.getMonth() + 1)}-${pad2(x.getDate())}`;
+  const t = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
 
   fromDate.value = f;
   toDate.value = t;
 }
 
-function setRangeThisMonth(){
+function setRangeThisMonth() {
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-  const pad = (n)=> String(n).padStart(2,"0");
-  const f = `${monthStart.getFullYear()}-${pad(monthStart.getMonth()+1)}-${pad(monthStart.getDate())}`;
-  const t = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  const f = `${monthStart.getFullYear()}-${pad2(monthStart.getMonth() + 1)}-${pad2(monthStart.getDate())}`;
+  const t = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
 
   fromDate.value = f;
   toDate.value = t;
 }
 
-async function loadCoordinators(){
+async function detectAdmin() {
+  const { data: u } = await sb.auth.getUser();
+  const user = u?.user;
+  if (!user) return false;
+
+  const { data, error } = await sb.from("profiles").select("role").eq("id", user.id).maybeSingle();
+  if (error) return false;
+  return data?.role === "admin";
+}
+
+async function loadCoordinators() {
   const { data, error } = await sb.from("profiles").select("display_name").order("display_name");
   if (error) return show(error.message, true);
 
@@ -107,27 +137,34 @@ async function loadCoordinators(){
   coordFilter.innerHTML =
     `<option value="">All</option>` +
     uniq.map(n => `<option value="${n}">${n}</option>`).join("");
+
+  // ✅ Apply Entry-style dropdown (+search)
+  enhanceSelect(coordFilter, { placeholder: "All coordinators", search: true, searchThreshold: 0 });
+  refreshSelect(coordFilter);
 }
 
-function buildBaseQuery({ includeCount=false } = {}){
+function buildBaseQuery({ includeCount = false } = {}) {
   let query = sb
     .from("touchpoints")
     .select("*", includeCount ? { count: "exact" } : undefined)
     .order("touch_timestamp", { ascending: false });
+      // Hide broken/partial rows
+  query = query
+    .not("child_name", "is", null).neq("child_name", "")
+    .not("medium", "is", null).neq("medium", "")
+    .not("objective", "is", null).neq("objective", "");
+
 
   if (coordFilter.value) query = query.eq("owner_name", coordFilter.value);
 
   const start = toStartISO(fromDate.value);
   const end = toEndISO(toDate.value);
-
   if (start) query = query.gte("touch_timestamp", start);
   if (end) query = query.lte("touch_timestamp", end);
 
   const text = q.value.trim();
   if (text) {
-    // Search across multiple columns
-    // NOTE: ilike needs PostgREST "or" syntax
-    const esc = text.replace(/,/g, " "); // avoid breaking OR
+    const esc = text.replace(/,/g, " ");
     query = query.or(
       `child_name.ilike.%${esc}%,student_name.ilike.%${esc}%,ticket_number.ilike.%${esc}%`
     );
@@ -136,18 +173,16 @@ function buildBaseQuery({ includeCount=false } = {}){
   return query;
 }
 
-async function loadPage(){
+async function loadPage() {
   hideMsg();
-  rowsEl.innerHTML = `<tr><td colspan="20">Loading...</td></tr>`;
+  rowsEl.innerHTML = `<tr><td colspan="21">Loading...</td></tr>`;
 
   const from = page * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;
 
-  const q1 = buildBaseQuery({ includeCount: true }).range(from, to);
-
-  const { data, error, count } = await q1;
+  const { data, error, count } = await buildBaseQuery({ includeCount: true }).range(from, to);
   if (error) {
-    rowsEl.innerHTML = `<tr><td colspan="20">${error.message}</td></tr>`;
+    rowsEl.innerHTML = `<tr><td colspan="21">${error.message}</td></tr>`;
     return;
   }
 
@@ -159,8 +194,8 @@ async function loadPage(){
   prevBtn.disabled = page <= 0;
   nextBtn.disabled = (to + 1) >= totalCount;
 
-  if (!data?.length){
-    rowsEl.innerHTML = `<tr><td colspan="20">No results.</td></tr>`;
+  if (!data?.length) {
+    rowsEl.innerHTML = `<tr><td colspan="21">No results.</td></tr>`;
     return;
   }
 
@@ -174,7 +209,7 @@ async function loadPage(){
       <td>${td(r.ticket_number)}</td>
       <td>${td(r.ticket_raised)}</td>
       <td>${td(r.owner_email)}</td>
-      <td>${r.touch_timestamp ? new Date(r.touch_timestamp).toLocaleString() : ""}</td>
+      <td>${fmtTS(r.touch_timestamp)}</td>
       <td>${td(r.correct_owner)}</td>
       <td>${td(r.student_name)}</td>
       <td>${td(r.class_name)}</td>
@@ -184,37 +219,77 @@ async function loadPage(){
       <td>${td(r.week)}</td>
       <td>${td(r.month)}</td>
       <td>${td(r.year)}</td>
-      <td>${td(r.comments_concat)}</td>
+      <td style="white-space:pre-wrap;">${td(r.comments_concat)}</td>
       <td>${td(r.time)}</td>
+      <td class="reports-actions">
+        ${isAdmin ? `<button class="btn danger" type="button" data-del="${r.id}">Delete</button>` : `<span class="muted">—</span>`}
+      </td>
     </tr>
   `).join("");
 }
 
-async function exportAllFiltered(){
+// ✅ Delete handler with real verification
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest("button[data-del]");
+  if (!btn) return;
+  if (!isAdmin) return;
+
+  const rawId = btn.getAttribute("data-del");
+  if (!rawId) return;
+
+  const ok = confirm("Delete this entry from database?");
+  if (!ok) return;
+
+  // convert numeric ids to Number, keep uuid as string
+  const id = /^\d+$/.test(rawId) ? Number(rawId) : rawId;
+
+  hideMsg();
+  show("Deleting…");
+
+  // IMPORTANT: .select("id") lets us detect if a row was actually deleted
+  const { data: deletedRows, error } = await sb
+    .from("touchpoints")
+    .delete()
+    .eq("id", id)
+    .select("id");
+
+  if (error) {
+    // Most common if RLS blocks delete
+    return show(`Delete failed: ${error.message}`, true);
+  }
+
+  if (!deletedRows || deletedRows.length === 0) {
+    // This is exactly your symptom: refresh happens but nothing removed
+    return show(
+      "Not deleted (0 rows affected). This is usually due to Row Level Security (RLS) policy on touchpoints. Add an admin DELETE policy in Supabase.",
+      true
+    );
+  }
+
+  show("Deleted ✅");
+  await loadPage();
+});
+
+async function exportAllFiltered() {
   hideMsg();
   show("Preparing export… (fetching all filtered rows)");
 
-  // Fetch in chunks to avoid limits
   const all = [];
   let offset = 0;
   const chunk = 1000;
 
   while (true) {
-    const from = offset;
-    const to = offset + chunk - 1;
-    const { data, error } = await buildBaseQuery().range(from, to);
+    const { data, error } = await buildBaseQuery().range(offset, offset + chunk - 1);
     if (error) return show(error.message, true);
     if (!data?.length) break;
 
     all.push(...data);
     offset += data.length;
-
     if (data.length < chunk) break;
   }
 
   if (!all.length) return show("No rows to export.", true);
 
-  // Convert to export-friendly JSON with exact headers
   const rows = all.map(r => ({
     "Child Name": td(r.child_name),
     "Medium": td(r.medium),
@@ -224,7 +299,7 @@ async function exportAllFiltered(){
     "Ticket Number": td(r.ticket_number),
     "Ticket raised?": td(r.ticket_raised),
     "Owner": td(r.owner_email),
-    "Timestamp": r.touch_timestamp ? new Date(r.touch_timestamp).toLocaleString() : "",
+    "Timestamp": fmtTS(r.touch_timestamp),
     "Correct Owner": td(r.correct_owner),
     "Name": td(r.student_name),
     "Class": td(r.class_name),
@@ -242,7 +317,7 @@ async function exportAllFiltered(){
   const wb = window.XLSX.utils.book_new();
   window.XLSX.utils.book_append_sheet(wb, ws, "Report");
 
-  const name = `Coordinator_Touchpoints_Report_${new Date().toISOString().slice(0,10)}.xlsx`;
+  const name = `Coordinator_Touchpoints_Report_${new Date().toISOString().slice(0, 10)}.xlsx`;
   window.XLSX.writeFile(wb, name);
 
   show(`Exported ${rows.length} rows ✅`);
@@ -250,6 +325,8 @@ async function exportAllFiltered(){
 
 (async () => {
   await mountNav("reports");
+  isAdmin = await detectAdmin();
+
   await loadCoordinators();
   setDefaultRangeLast7Days();
   await loadPage();
@@ -258,7 +335,10 @@ async function exportAllFiltered(){
 applyBtn.addEventListener("click", async () => { page = 0; await loadPage(); });
 
 clearBtn.addEventListener("click", async () => {
+  // reset select to All and refresh custom dropdown UI
   coordFilter.value = "";
+  refreshSelect(coordFilter);
+
   q.value = "";
   setDefaultRangeLast7Days();
   page = 0;
