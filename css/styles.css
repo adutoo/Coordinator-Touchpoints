@@ -497,3 +497,46 @@ th{
 
 /* Extra safety: make menu itself high */
 .custom-select-container .options-menu { z-index: 100001; }
+
+/* ===== Fix Entry bulk layout (prevents tiny left-column shrink) ===== */
+.tp-entries { display: flex; flex-direction: column; gap: 14px; width: 100%; }
+.tp-entry { width: 100%; }
+
+.tp-entry-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:10px;
+}
+.tp-entry-title{ font-weight:700; color: rgba(255,255,255,0.86); }
+
+/* Ensure your 12-col grid stays flexible */
+.form{
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+}
+.field{ min-width: 0; }
+
+/* Custom dropdown should take full width */
+.custom-select-container{ width:100% !important; }
+.custom-select-container .select-trigger{ width:100% !important; }
+
+/* Reports action cell keeps button inside */
+.reports-actions{ white-space: nowrap; }
+
+
+/* Performance boost for glass UI */
+.card, .nav, .topbar, .custom-select-container .options-menu {
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* Reduce blur cost (still looks glassy) */
+.card {
+  backdrop-filter: blur(10px);
+}
+
+/* Avoid repaint storms on scroll */
+body {
+  background-attachment: scroll; /* (don’t use fixed background) */
+}
