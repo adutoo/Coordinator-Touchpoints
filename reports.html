@@ -10,76 +10,89 @@
   <div class="container">
     <div id="navHolder"></div>
 
-    <div class="grid">
-      <div class="card">
-        <h2>Reports</h2>
-        <p class="muted">Filter by coordinator + date range. Search and export to Excel.</p>
+    <div class="card">
+      <h2>Reports</h2>
+      <p class="muted">Filter by coordinator + date range. Search and export to Excel.</p>
 
-        <div class="form">
-          <div class="field span3">
-            <label>Coordinator Name</label>
-            <select id="coordFilter">
-              <option value="">All</option>
-            </select>
+      <div class="form">
+        <div class="field span3">
+          <label>Coordinator Name</label>
+          <select id="coordFilter">
+            <option value="">All</option>
+          </select>
+        </div>
+
+        <div class="field span3">
+          <label>From</label>
+          <input id="fromDate" type="date" />
+        </div>
+
+        <div class="field span3">
+          <label>To</label>
+          <input id="toDate" type="date" />
+        </div>
+
+        <div class="field span3">
+          <label>Search (Child / Name / Ticket)</label>
+          <input id="q" type="text" placeholder="Type and press Apply…" />
+        </div>
+
+        <div class="field span12">
+          <label>Actions</label>
+          <div class="row" style="gap:10px;flex-wrap:wrap;">
+            <button id="applyBtn" class="btn primary" type="button">Apply</button>
+            <button id="clearBtn" class="btn" type="button">Clear</button>
+            <button id="exportBtn" class="btn" type="button">Export XLSX</button>
+
+            <button id="todayBtn" class="btn" type="button">Today</button>
+            <button id="weekBtn" class="btn" type="button">This Week</button>
+            <button id="monthBtn" class="btn" type="button">This Month</button>
           </div>
+        </div>
 
-          <div class="field span3">
-            <label>From</label>
-            <input id="fromDate" type="date" />
-          </div>
-
-          <div class="field span3">
-            <label>To</label>
-            <input id="toDate" type="date" />
-          </div>
-
-          <div class="field span3">
-            <label>Search (Child / Name / Ticket)</label>
-            <input id="q" type="text" placeholder="Type and press Apply…" />
-          </div>
-
-          <div class="field">
-            <label>Actions</label>
-            <div class="row">
-              <button id="applyBtn" class="btn primary" type="button">Apply</button>
-              <button id="clearBtn" class="btn" type="button">Clear</button>
-              <button id="exportBtn" class="btn" type="button"><b>Export XLSX</b></button>
-
-              <button id="todayBtn" class="btn" type="button">Today</button>
-              <button id="weekBtn" class="btn" type="button">This Week</button>
-              <button id="monthBtn" class="btn" type="button">This Month</button>
+        <div class="field span12">
+          <div class="row" style="justify-content:space-between;align-items:center;">
+            <div class="muted" id="meta"></div>
+            <div class="row" style="gap:10px;align-items:center;">
+              <button id="prevBtn" class="btn" type="button">Prev</button>
+              <div class="muted" id="pageInfo"></div>
+              <button id="nextBtn" class="btn" type="button">Next</button>
             </div>
           </div>
         </div>
+      </div>
 
-        <div class="row" style="justify-content:space-between; margin-top:10px;">
-          <div class="muted" id="meta"></div>
-          <div class="row">
-            <button id="prevBtn" class="btn" type="button">Prev</button>
-            <div class="muted" id="pageInfo"></div>
-            <button id="nextBtn" class="btn" type="button">Next</button>
-          </div>
-        </div>
+      <div id="msg" class="notice" style="display:none;margin-top:12px;"></div>
 
-        <div class="tablewrap" style="margin-top:10px;">
-          <table id="TableToExport">
-            <thead>
-              <tr>
-                <th>Child Name</th><th>Medium</th><th>Objective</th>
-                <th>Positives / Strengths / What good we are doing</th>
-                <th>Suggestion / Weakness / What we or the student need to improve /Questions</th>
-                <th>Ticket Number</th><th>Ticket raised?</th>
-                <th>Owner</th><th>Timestamp</th><th>Correct Owner</th>
-                <th>Name</th><th>Class</th><th>Section</th><th>SR Number</th>
-                <th>Owner Name</th><th>Week</th><th>Month</th><th>Year</th>
-                <th>Comments Concat</th><th>Time</th>
-              </tr>
-            </thead>
-            <tbody id="rows"></tbody>
-          </table>
-        </div>
-
-        <div id="msg" class="notice" style="display:none;"></div>
+      <div class="tablewrap" style="margin-top:12px;">
+        <table>
+          <thead>
+            <tr>
+              <th>Child Name</th>
+              <th>Medium</th>
+              <th>Objective</th>
+              <th>Positives / Strengths / What good we are doing</th>
+              <th>Suggestion / Weakness / What we or the student need to improve /Questions</th>
+              <th>Ticket Number</th>
+              <th>Ticket raised?</th>
+              <th>Owner</th>
+              <th>Timestamp</th>
+              <th>Correct Owner</th>
+              <th>Name</th>
+              <th>Class</th>
+              <th>Section</th>
+              <th>SR Number</th>
+              <th>Owner Name</th>
+              <th>Week</th>
+              <th>Month</th>
+              <th>Year</th>
+              <th>Comments Concat</th>
+              <th>Time</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
       </div>
     </div>
   </div>
