@@ -2,7 +2,7 @@
 import { sb } from "./supabaseClient.js";
 import { mountNav } from "./nav.js";
 import { getMe, getMyProfile } from "./auth.js";
-import { enhanceSelect, refreshSelect } from "./customSelect.js";
+import { enhanceSelect, refreshSelect, enhanceComboSelect, refreshComboSelect } from "./customSelect.js";
 
 const entriesEl = document.getElementById("entries");
 const tpl = document.getElementById("entryTpl");
@@ -11,11 +11,19 @@ const form = document.getElementById("tpForm");
 const resetBtn = document.getElementById("resetBtn");
 const msg = document.getElementById("msg");
 
+// ---- Tickets config (adjust ONLY if your tickets table uses different column names) ----
+const TICKETS_TABLE = "tickets";
+const TICKET_SELECT = "ticket_number,student_name,department,category"; // must exist in tickets table
+const TICKET_MATCH_FIELD = "student_name"; // we match tickets by student_name
+
 let students = [];
 let studentsByChild = new Map();
 let mediums = [];
 let objectives = [];
 let ticketOptions = [];
+
+// cache tickets per student_name so we don't refetch repeatedly
+const ticketsCache = new Map(); // student_name -> [{ticket_number, department, category, student_name}]
 
 function show(text, isError = false) {
   msg.style.display = "block";
@@ -88,14 +96,19 @@ function blockRefs(block) {
     objective: q('select[data-field="objective"]'),
     positives: q('textarea[data-field="positives"]'),
     suggestion: q('textarea[data-field="suggestion"]'),
+
     ticketRaised: q('select[data-field="ticketRaised"]'),
-    ticketNumber: q('input[data-field="ticketNumber"]'),
+    ticketNumber: q('select[data-field="ticketNumber"]'),
+    ticketDept: q('input[data-field="ticketDept"]'),
+    ticketCategory: q('input[data-field="ticketCategory"]'),
+
     timeAuto: q('input[data-field="timeAuto"]'),
     tsAuto: q('input[data-field="tsAuto"]'),
     studentName: q('input[data-field="studentName"]'),
     className: q('input[data-field="className"]'),
     section: q('input[data-field="section"]'),
     srNumber: q('input[data-field="srNumber"]'),
+
     removeBtn: q(".tp-remove"),
     nEl: q(".tp-entry-n"),
   };
@@ -124,20 +137,141 @@ function refreshNumbers() {
   });
 }
 
-function enhanceBlockSelects(refs) {
-  // child: search enabled (big list)
-  enhanceSelect(refs.child, { placeholder: "Select child...", search: true, searchThreshold: 0 });
+function refreshTicketNumberUI(selectEl){
+  // for combo-select
+  try { refreshComboSelect(selectEl); } catch {}
+  // harmless fallback if you still have normal select enhancer elsewhere
+  try { refreshSelect(selectEl); } catch {}
 
+  // sync disabled to combo input if present
+  try {
+    if (selectEl?._comboInput) selectEl._comboInput.disabled = !!selectEl.disabled;
+  } catch {}
+}
+
+function enhanceBlockSelects(refs) {
+  enhanceSelect(refs.child, { placeholder: "Select child...", search: true, searchThreshold: 0 });
   enhanceSelect(refs.medium, { placeholder: "Select medium..." });
   enhanceSelect(refs.objective, { placeholder: "Select objective..." });
-
-  // ticket optional
   enhanceSelect(refs.ticketRaised, { placeholder: "Ticket raised? (Optional)" });
+
+  // ✅ Ticket Number: input-like dropdown (free typing + show all on focus)
+  enhanceComboSelect(refs.ticketNumber, {
+    placeholder: "Type ticket number (Optional)",
+    allowCustom: true,
+    showAllOnFocus: true,
+    maxItems: 200,
+  });
 
   refreshSelect(refs.child);
   refreshSelect(refs.medium);
   refreshSelect(refs.objective);
   refreshSelect(refs.ticketRaised);
+  refreshTicketNumberUI(refs.ticketNumber);
+}
+
+function setTicketEmpty(refs) {
+  refs.ticketDept.value = "";
+  refs.ticketCategory.value = "";
+  refs.ticketNumber.innerHTML = `<option value=""></option>`;
+  refs.ticketNumber.value = "";
+  refs.ticketNumber.disabled = true;
+  refreshTicketNumberUI(refs.ticketNumber);
+}
+
+// Fetch tickets for this student_name (cached)
+async function getTicketsForStudent(studentName) {
+  if (!studentName) return [];
+  if (ticketsCache.has(studentName)) return ticketsCache.get(studentName);
+
+  const { data, error } = await sb
+    .from(TICKETS_TABLE)
+    .select(TICKET_SELECT)
+    .eq(TICKET_MATCH_FIELD, studentName)
+    .order("ticket_number", { ascending: false });
+
+  if (error) {
+    console.error("Tickets fetch error:", error);
+    ticketsCache.set(studentName, []);
+    return [];
+  }
+
+  const list = (data || []).filter(r => r?.ticket_number);
+  ticketsCache.set(studentName, list);
+  return list;
+}
+
+function renderTicketOptions(refs, tickets) {
+  const opts = [`<option value=""></option>`];
+
+  for (const t of tickets) {
+    const num = escAttr(t.ticket_number);
+    const label =
+      t.department || t.category
+        ? `${t.ticket_number} — ${t.department ?? ""}${t.department && t.category ? " / " : ""}${t.category ?? ""}`
+        : `${t.ticket_number}`;
+
+    // value = ticket_number, text = nice label
+    opts.push(`<option value="${num}">${escText(label)}</option>`);
+  }
+
+  refs.ticketNumber.innerHTML = opts.join("");
+  refs.ticketNumber.disabled = false;
+  refreshTicketNumberUI(refs.ticketNumber);
+}
+
+function fillTicketMeta(refs, tickets) {
+  const raw = (refs.ticketNumber.value || "").trim();
+  const ticketNum = raw.split(" — ")[0].trim(); // safety, in case value ever contains label text
+
+  if (!ticketNum) {
+    refs.ticketDept.value = "";
+    refs.ticketCategory.value = "";
+    return;
+  }
+
+  const t = tickets.find(x => x.ticket_number === ticketNum);
+  refs.ticketDept.value = t?.department ?? "";
+  refs.ticketCategory.value = t?.category ?? "";
+}
+
+
+async function updateTicketsForChild(refs) {
+  const s = studentsByChild.get(refs.child.value);
+  const studentName = s?.student_name ?? "";
+
+  // clear first
+  refs.ticketDept.value = "";
+  refs.ticketCategory.value = "";
+  refs.ticketNumber.value = "";
+  refs.ticketNumber.innerHTML = `<option value=""></option>`;
+  refs.ticketNumber.disabled = true;
+  refreshTicketNumberUI(refs.ticketNumber);
+
+  if (!studentName) return;
+
+  // loading
+  refs.ticketNumber.disabled = true;
+  refs.ticketNumber.innerHTML = `<option value=""></option><option value="__loading__" disabled>Loading tickets…</option>`;
+  refreshTicketNumberUI(refs.ticketNumber);
+
+  const tickets = await getTicketsForStudent(studentName);
+
+  if (!tickets.length) {
+  refs.ticketNumber.innerHTML = `<option value=""></option>`;
+  refs.ticketNumber.disabled = false;   // ✅ allow typing
+  refreshTicketNumberUI(refs.ticketNumber);
+  return;
+}
+
+
+  renderTicketOptions(refs, tickets);
+
+  // ✅ works for combo-select too (because enhanceComboSelect dispatches "change")
+  refs.ticketNumber.onchange = () => {
+    fillTicketMeta(refs, tickets);
+    refreshTicketNumberUI(refs.ticketNumber);
+  };
 }
 
 function createBlock(cloneFrom = null) {
@@ -153,15 +287,19 @@ function createBlock(cloneFrom = null) {
   refs.objective.innerHTML = buildOptions(objectives, "label", "label");
   refs.ticketRaised.innerHTML = buildOptions(ticketOptions, "label", "label");
 
-  // default
+  // defaults
   refs.timeAuto.value = "1 min";
   refs.tsAuto.value = "";
 
+  setTicketEmpty(refs);
+
   // events
-  refs.child.addEventListener("change", () => {
+  refs.child.addEventListener("change", async () => {
     fillStudentAuto(refs);
+    await updateTicketsForChild(refs);
     refreshSelect(refs.child);
   });
+
   refs.medium.addEventListener("change", () => {
     fillTimeAuto(refs);
     refreshSelect(refs.medium);
@@ -180,7 +318,6 @@ function createBlock(cloneFrom = null) {
     refs.medium.value = src.medium.value;
     refs.objective.value = src.objective.value;
     refs.ticketRaised.value = src.ticketRaised.value;
-    refs.ticketNumber.value = src.ticketNumber.value;
 
     refs.positives.value = src.positives.value;
     refs.suggestion.value = src.suggestion.value;
@@ -195,6 +332,11 @@ function createBlock(cloneFrom = null) {
   entriesEl.appendChild(node);
   enhanceBlockSelects(refs);
   refreshNumbers();
+
+  // after DOM/enhance, if we cloned a child, load that child's tickets
+  if (cloneFrom && refs.child.value) {
+    updateTicketsForChild(refs).catch(console.error);
+  }
 }
 
 (async () => {
@@ -216,7 +358,6 @@ function createBlock(cloneFrom = null) {
     objectives = obj.data || [];
     ticketOptions = tick.data || [];
 
-    // first block
     createBlock(null);
     show(`Loaded ${students.length} students ✅`);
     setTimeout(hideMsg, 1200);
@@ -270,13 +411,17 @@ form.addEventListener("submit", async (e) => {
     const positives = refs.positives.value.trim();
     const suggestion = refs.suggestion.value.trim();
 
-    // ✅ Ticket raised OPTIONAL now
+    // Ticket raised OPTIONAL
     const ticket_raised = refs.ticketRaised.value ? refs.ticketRaised.value : null;
+
+    // ticket number OPTIONAL (combo input)
+    const ticket_number = refs.ticketNumber.value && !refs.ticketNumber.disabled
+      ? refs.ticketNumber.value
+      : "";
 
     const time_min = fillTimeAuto(refs);
     const timeText = `${time_min} min`;
 
-    // ✅ Comments Concat = positives + "\n" + suggestion (only add \n when both exist)
     const comments_concat =
       positives && suggestion ? `${positives}\n${suggestion}` :
       positives ? positives :
@@ -290,7 +435,7 @@ form.addEventListener("submit", async (e) => {
       suggestion,
 
       ticket_raised,
-      ticket_number: (refs.ticketNumber.value || "").trim(),
+      ticket_number,
 
       owner_user_id: me.id,
       owner_email: me.email,
