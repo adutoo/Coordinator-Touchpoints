@@ -257,3 +257,216 @@ export function refreshSelect(selectEl) {
     triggerText.classList.add("placeholder");
   }
 }
+
+
+// ✅ ComboSelect: Select behaves like input + dropdown suggestions (free typing allowed)
+// customSelect.js (REPLACE enhanceComboSelect + refreshComboSelect)
+
+export function enhanceComboSelect(selectEl, opts = {}) {
+  if (!selectEl || selectEl._combo) return;
+
+  const cfg = {
+    placeholder: opts.placeholder ?? selectEl.getAttribute("data-placeholder") ?? "",
+    allowCustom: opts.allowCustom ?? true,
+    showAllOnFocus: opts.showAllOnFocus ?? true,
+    maxItems: opts.maxItems ?? 200,
+  };
+
+  const escapeHtml = (s) =>
+    String(s ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+
+  // ---- wrap ----
+  const wrap = document.createElement("div");
+  wrap.className = "cs-combo";
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "cs-combo-input";
+  input.placeholder = cfg.placeholder;
+  input.autocomplete = "off";
+  input.spellcheck = false;
+
+  // IMPORTANT: input should show ONLY value (ticket number)
+  input.value = selectEl.value || "";
+  input.disabled = !!selectEl.disabled;
+
+  const menu = document.createElement("div");
+  menu.className = "cs-combo-menu";
+  menu.style.position = "absolute";
+menu.style.zIndex = "9999";
+
+  menu.style.display = "none";
+
+  // move select inside wrap + hide select (keep it for value + form submit)
+  const parent = selectEl.parentNode;
+  parent.insertBefore(wrap, selectEl);
+  wrap.appendChild(selectEl);
+  wrap.appendChild(input);
+  wrap.appendChild(menu);
+
+  selectEl.style.position = "absolute";
+  selectEl.style.opacity = "0";
+  selectEl.style.pointerEvents = "none";
+  selectEl.style.width = "1px";
+  selectEl.style.height = "1px";
+
+  // store input ref (useful for external sync)
+  selectEl._comboInput = input;
+
+  const getOptions = () =>
+    Array.from(selectEl.options || [])
+      .filter((o) => !o.disabled)
+      .filter((o) => (o.value ?? "") !== "")
+      .filter((o) => !String(o.value).startsWith("__"));
+
+  function openMenu() {
+    menu.style.display = "block";
+  }
+  function closeMenu() {
+    menu.style.display = "none";
+  }
+
+  function commitValue(val) {
+    val = String(val ?? "").trim();
+
+    // clear
+    if (!val) {
+      // remove temp option if any
+      const tmp = selectEl.querySelector('option[data-combo-temp="1"]');
+      if (tmp) tmp.remove();
+      selectEl.value = "";
+      input.value = "";
+      selectEl.dispatchEvent(new Event("change", { bubbles: true }));
+      return;
+    }
+
+    // if value exists in options, use it
+    const exists = Array.from(selectEl.options).some((o) => String(o.value) === val);
+
+    if (exists) {
+      const tmp = selectEl.querySelector('option[data-combo-temp="1"]');
+      if (tmp) tmp.remove();
+      selectEl.value = val;
+      input.value = val; // ✅ show only ticket number
+      selectEl.dispatchEvent(new Event("change", { bubbles: true }));
+      return;
+    }
+
+    // else custom typing
+    if (cfg.allowCustom) {
+      let tmp = selectEl.querySelector('option[data-combo-temp="1"]');
+      if (!tmp) {
+        tmp = document.createElement("option");
+        tmp.setAttribute("data-combo-temp", "1");
+        selectEl.appendChild(tmp);
+      }
+      tmp.value = val;
+      tmp.textContent = val;
+      selectEl.value = val;
+      input.value = val;
+      selectEl.dispatchEvent(new Event("change", { bubbles: true }));
+      return;
+    }
+
+    // not allowed
+    selectEl.value = "";
+    input.value = "";
+    selectEl.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function renderList(term) {
+    const t = String(term ?? "").trim().toLowerCase();
+    const options = getOptions();
+
+    let items = options;
+    if (t) {
+      items = options.filter((o) => {
+        const v = String(o.value ?? "").toLowerCase();
+        const txt = String(o.textContent ?? "").toLowerCase();
+        return v.includes(t) || txt.includes(t);
+      });
+    }
+
+    menu.innerHTML = "";
+
+    if (!items.length) {
+      menu.innerHTML = `<div class="cs-combo-empty">No matches</div>`;
+      return;
+    }
+
+    let shown = 0;
+    for (const o of items) {
+      const label = o.textContent || o.value; // ✅ dropdown shows ticket + details
+      const div = document.createElement("div");
+      div.className = "cs-combo-item";
+      div.setAttribute("data-value", o.value);
+      div.innerHTML = escapeHtml(label);
+
+      // mousedown so blur doesn't close before click registers
+      div.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        commitValue(o.value); // ✅ commit ONLY ticket number
+        closeMenu();
+      });
+
+      menu.appendChild(div);
+      shown++;
+      if (shown >= cfg.maxItems) break;
+    }
+  }
+
+  // events
+  input.addEventListener("focus", () => {
+    renderList(cfg.showAllOnFocus ? "" : input.value);
+    openMenu();
+  });
+
+  input.addEventListener("input", () => {
+    renderList(input.value);
+    openMenu();
+  });
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      closeMenu();
+      return;
+    }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commitValue(input.value);
+      closeMenu();
+    }
+  });
+
+  input.addEventListener("blur", () => {
+    setTimeout(() => {
+      if (!wrap.contains(document.activeElement)) {
+        commitValue(input.value);
+        closeMenu();
+      }
+    }, 120);
+  });
+
+  // click outside closes
+  document.addEventListener("mousedown", (e) => {
+    if (!wrap.contains(e.target)) closeMenu();
+  });
+
+  selectEl._combo = { wrap, input, menu, cfg, renderList, openMenu, closeMenu, commitValue };
+}
+
+export function refreshComboSelect(selectEl) {
+  const c = selectEl?._combo;
+  if (!c) return;
+
+  c.input.placeholder = c.cfg.placeholder || "";
+  c.input.disabled = !!selectEl.disabled;
+
+  // always show value in input (ticket number only)
+  c.input.value = selectEl.value || "";
+}
