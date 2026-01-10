@@ -2,6 +2,7 @@
 import { sb } from "./supabaseClient.js";
 import { mountNav } from "./nav.js";
 import { enhanceSelect, refreshSelect } from "./customSelect.js";
+import { withBusy, setBusyProgress } from "./busy.js";
 
 const coordFilter = document.getElementById("coordFilter");
 const fromDate = document.getElementById("fromDate");
@@ -119,41 +120,17 @@ function setRangeThisMonth() {
   toDate.value = t;
 }
 
-async function detectAdmin() {
-  const { data: u } = await sb.auth.getUser();
-  const user = u?.user;
-  if (!user) return false;
-
-  const { data, error } = await sb.from("profiles").select("role").eq("id", user.id).maybeSingle();
-  if (error) return false;
-  return data?.role === "admin";
-}
-
-async function loadCoordinators() {
-  const { data, error } = await sb.from("profiles").select("display_name").order("display_name");
-  if (error) return show(error.message, true);
-
-  const uniq = Array.from(new Set((data || []).map(x => x.display_name).filter(Boolean)));
-  coordFilter.innerHTML =
-    `<option value="">All</option>` +
-    uniq.map(n => `<option value="${n}">${n}</option>`).join("");
-
-  // ✅ Apply Entry-style dropdown (+search)
-  enhanceSelect(coordFilter, { placeholder: "All coordinators", search: true, searchThreshold: 0 });
-  refreshSelect(coordFilter);
-}
-
 function buildBaseQuery({ includeCount = false } = {}) {
   let query = sb
     .from("touchpoints")
     .select("*", includeCount ? { count: "exact" } : undefined)
     .order("touch_timestamp", { ascending: false });
-      // Hide broken/partial rows
+
+  // Hide broken/partial rows
   query = query
     .not("child_name", "is", null).neq("child_name", "")
     .not("medium", "is", null).neq("medium", "")
     .not("objective", "is", null).neq("objective", "");
-
 
   if (coordFilter.value) query = query.eq("owner_name", coordFilter.value);
 
@@ -173,7 +150,31 @@ function buildBaseQuery({ includeCount = false } = {}) {
   return query;
 }
 
-async function loadPage() {
+// ---------- RAW DB ops (no popup inside) ----------
+async function detectAdminRaw() {
+  const { data: u } = await sb.auth.getUser();
+  const user = u?.user;
+  if (!user) return false;
+
+  const { data, error } = await sb.from("profiles").select("role").eq("id", user.id).maybeSingle();
+  if (error) return false;
+  return data?.role === "admin";
+}
+
+async function loadCoordinatorsRaw() {
+  const { data, error } = await sb.from("profiles").select("display_name").order("display_name");
+  if (error) throw error;
+
+  const uniq = Array.from(new Set((data || []).map(x => x.display_name).filter(Boolean)));
+  coordFilter.innerHTML =
+    `<option value="">All</option>` +
+    uniq.map(n => `<option value="${n}">${n}</option>`).join("");
+
+  enhanceSelect(coordFilter, { placeholder: "All coordinators", search: true, searchThreshold: 0 });
+  refreshSelect(coordFilter);
+}
+
+async function loadPageRaw() {
   hideMsg();
   rowsEl.innerHTML = `<tr><td colspan="21">Loading...</td></tr>`;
 
@@ -181,10 +182,7 @@ async function loadPage() {
   const to = from + PAGE_SIZE - 1;
 
   const { data, error, count } = await buildBaseQuery({ includeCount: true }).range(from, to);
-  if (error) {
-    rowsEl.innerHTML = `<tr><td colspan="21">${error.message}</td></tr>`;
-    return;
-  }
+  if (error) throw error;
 
   totalCount = count ?? 0;
 
@@ -228,59 +226,29 @@ async function loadPage() {
   `).join("");
 }
 
-// ✅ Delete handler with real verification
-document.addEventListener("click", async (e) => {
-  const btn = e.target.closest("button[data-del]");
-  if (!btn) return;
-  if (!isAdmin) return;
-
-  const rawId = btn.getAttribute("data-del");
-  if (!rawId) return;
-
-  const ok = confirm("Delete this entry from database?");
-  if (!ok) return;
-
+async function deleteTouchpointRaw(rawId) {
   // convert numeric ids to Number, keep uuid as string
-  const id = /^\d+$/.test(rawId) ? Number(rawId) : rawId;
+  const id = /^\d+$/.test(String(rawId)) ? Number(rawId) : rawId;
 
-  hideMsg();
-  show("Deleting…");
-
-  // IMPORTANT: .select("id") lets us detect if a row was actually deleted
   const { data: deletedRows, error } = await sb
     .from("touchpoints")
     .delete()
     .eq("id", id)
-    .select("id");
+    .select("id"); // IMPORTANT: lets us detect if a row was actually deleted
 
-  if (error) {
-    // Most common if RLS blocks delete
-    return show(`Delete failed: ${error.message}`, true);
-  }
+  if (error) throw error;
+  return deletedRows || [];
+}
 
-  if (!deletedRows || deletedRows.length === 0) {
-    // This is exactly your symptom: refresh happens but nothing removed
-    return show(
-      "Not deleted (0 rows affected). This is usually due to Row Level Security (RLS) policy on touchpoints. Add an admin DELETE policy in Supabase.",
-      true
-    );
-  }
-
-  show("Deleted ✅");
-  await loadPage();
-});
-
-async function exportAllFiltered() {
-  hideMsg();
-  show("Preparing export… (fetching all filtered rows)");
-
+async function exportAllFilteredRaw() {
   const all = [];
   let offset = 0;
   const chunk = 1000;
 
   while (true) {
+    setBusyProgress(null, `Fetching rows… (${all.length} loaded)`);
     const { data, error } = await buildBaseQuery().range(offset, offset + chunk - 1);
-    if (error) return show(error.message, true);
+    if (error) throw error;
     if (!data?.length) break;
 
     all.push(...data);
@@ -288,7 +256,12 @@ async function exportAllFiltered() {
     if (data.length < chunk) break;
   }
 
-  if (!all.length) return show("No rows to export.", true);
+  if (!all.length) {
+    show("No rows to export.", true);
+    return;
+  }
+
+  setBusyProgress(null, `Building XLSX… (${all.length} rows)`);
 
   const rows = all.map(r => ({
     "Child Name": td(r.child_name),
@@ -323,19 +296,96 @@ async function exportAllFiltered() {
   show(`Exported ${rows.length} rows ✅`);
 }
 
+// ---------- PUBLIC wrappers (show popup progress) ----------
+async function loadPage() {
+  await withBusy("Loading report…", async () => {
+    setBusyProgress(null, "Loading data…");
+    await loadPageRaw();
+  }).catch((err) => {
+    console.error(err);
+    rowsEl.innerHTML = `<tr><td colspan="21">${td(err?.message || String(err))}</td></tr>`;
+    show(err?.message || String(err), true);
+  });
+}
+
+async function loadCoordinators() {
+  await withBusy("Loading coordinators…", async () => {
+    setBusyProgress(null, "Fetching users…");
+    await loadCoordinatorsRaw();
+  }).catch((err) => {
+    console.error(err);
+    show(err?.message || String(err), true);
+  });
+}
+
+async function exportAllFiltered() {
+  hideMsg();
+  await withBusy("Preparing export…", async () => {
+    await exportAllFilteredRaw();
+  }).catch((err) => {
+    console.error(err);
+    show(err?.message || String(err), true);
+  });
+}
+
+// ✅ Delete handler with real verification + progress popup
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest("button[data-del]");
+  if (!btn) return;
+  if (!isAdmin) return;
+
+  const rawId = btn.getAttribute("data-del");
+  if (!rawId) return;
+
+  const ok = confirm("Delete this entry from database?");
+  if (!ok) return;
+
+  hideMsg();
+  await withBusy("Deleting…", async () => {
+    setBusyProgress(null, "Deleting from DB…");
+    const deletedRows = await deleteTouchpointRaw(rawId);
+
+    if (!deletedRows || deletedRows.length === 0) {
+      show(
+        "Not deleted (0 rows affected). This is usually due to Row Level Security (RLS) policy on touchpoints. Add an admin DELETE policy in Supabase.",
+        true
+      );
+      return;
+    }
+
+    show("Deleted ✅");
+    setBusyProgress(null, "Refreshing…");
+    await loadPageRaw(); // avoid nested popup
+  }).catch((err) => {
+    console.error(err);
+    show(`Delete failed: ${err?.message || String(err)}`, true);
+  });
+});
+
+// ---------- Boot ----------
 (async () => {
   await mountNav("reports");
-  isAdmin = await detectAdmin();
 
-  await loadCoordinators();
-  setDefaultRangeLast7Days();
-  await loadPage();
+  await withBusy("Loading reports…", async () => {
+    setBusyProgress(null, "Checking access…");
+    isAdmin = await detectAdminRaw();
+
+    setBusyProgress(null, "Loading coordinators…");
+    await loadCoordinatorsRaw();
+
+    setBusyProgress(null, "Loading report…");
+    setDefaultRangeLast7Days();
+    await loadPageRaw();
+  }).catch((err) => {
+    console.error(err);
+    show(err?.message || String(err), true);
+  });
 })();
 
+// ---------- Events ----------
 applyBtn.addEventListener("click", async () => { page = 0; await loadPage(); });
 
 clearBtn.addEventListener("click", async () => {
-  // reset select to All and refresh custom dropdown UI
   coordFilter.value = "";
   refreshSelect(coordFilter);
 
