@@ -228,7 +228,7 @@
       </div>
 
       <!-- Manage Ticket Raised options -->
-      <div class="card">
+      <div class="card span6">
         <h2>Manage Ticket Raised Options</h2>
         <p class="muted">Configure the Ticket raised? dropdown used in Entry.</p>
 
@@ -257,6 +257,276 @@
         </div>
 
         <div id="ticketMsg" class="notice" style="display:none;"></div>
+      </div>
+
+      <!-- ✅ NEW: Manage Ticket Statuses -->
+      <div class="card span6">
+        <h2>Manage Ticket Statuses</h2>
+        <p class="muted">Controls Ticket Status dropdown used in Ticket Reports.</p>
+
+        <form id="addStatusForm" class="form">
+          <div class="field span8">
+            <label>Status Label</label>
+            <input id="statusLabel" type="text" placeholder="e.g., Open / In Progress / Closed" required />
+          </div>
+          <div class="field span4">
+            <label>Sort Order</label>
+            <input id="statusSort" type="number" value="100" />
+          </div>
+          <div class="field span12">
+            <button class="btn primary" type="submit">Add Status</button>
+          </div>
+        </form>
+
+        <div class="tablewrap maxh">
+          <table>
+            <thead>
+              <tr>
+                <th>Label</th>
+                <th>Sort</th>
+                <th>Active</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="statusRows"></tbody>
+          </table>
+        </div>
+
+        <div id="statusMsg" class="notice" style="display:none;"></div>
+      </div>
+
+      <!-- Ticket Validation: Issue Raised By -->
+      <div class="card span6">
+        <h2>Ticket Validation — Issue Raised By</h2>
+        <p class="muted">Controls Ticket Entry dropdown: Issue Raised By.</p>
+
+        <form id="addIrbyForm" class="form">
+          <div class="field span8">
+            <label>Label</label>
+            <input id="irbyLabel" type="text" placeholder="e.g., Parent / Teacher / Student" required />
+          </div>
+          <div class="field span4">
+            <label>Sort Order</label>
+            <input id="irbySort" type="number" value="100" />
+          </div>
+          <div class="field span12">
+            <button class="btn primary" type="submit">Add</button>
+          </div>
+        </form>
+
+        <div class="tablewrap maxh">
+          <table>
+            <thead>
+              <tr>
+                <th>Label</th>
+                <th>Sort</th>
+                <th>Active</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="irbyRows"></tbody>
+          </table>
+        </div>
+
+        <div id="irbyMsg" class="notice" style="display:none;"></div>
+      </div>
+
+      <!-- Ticket Validation: Departments -->
+      <div class="card span6">
+        <h2>Ticket Validation — Departments</h2>
+        <p class="muted">Controls Department dropdown + whether Subject is required.</p>
+
+        <form id="addDeptForm" class="form">
+          <div class="field span6">
+            <label>Department Label</label>
+            <input id="deptLabel" type="text" placeholder="e.g., Core Academics" required />
+          </div>
+          <div class="field span3">
+            <label>Requires Subject?</label>
+            <select id="deptReqSub" data-placeholder="Select...">
+              <option value="false" selected>No</option>
+              <option value="true">Yes</option>
+            </select>
+          </div>
+          <div class="field span3">
+            <label>Sort Order</label>
+            <input id="deptSort" type="number" value="100" />
+          </div>
+          <div class="field span12">
+            <button class="btn primary" type="submit">Add</button>
+          </div>
+        </form>
+
+        <div class="tablewrap maxh">
+          <table>
+            <thead>
+              <tr>
+                <th>Department</th>
+                <th>Req. Subject</th>
+                <th>Sort</th>
+                <th>Active</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="deptRows"></tbody>
+          </table>
+        </div>
+
+        <div id="deptMsg" class="notice" style="display:none;"></div>
+      </div>
+
+      <!-- Ticket Validation: Subjects -->
+      <div class="card span6">
+        <h2>Ticket Validation — Subjects</h2>
+        <p class="muted">Controls Subject dropdown.</p>
+
+        <form id="addSubjForm" class="form">
+          <div class="field span8">
+            <label>Label</label>
+            <input id="subjLabel" type="text" placeholder="e.g., Maths / Science" required />
+          </div>
+          <div class="field span4">
+            <label>Sort Order</label>
+            <input id="subjSort" type="number" value="100" />
+          </div>
+          <div class="field span12">
+            <button class="btn primary" type="submit">Add</button>
+          </div>
+        </form>
+
+        <div class="tablewrap maxh">
+          <table>
+            <thead>
+              <tr>
+                <th>Label</th>
+                <th>Sort</th>
+                <th>Active</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="subjRows"></tbody>
+          </table>
+        </div>
+
+        <div id="subjMsg" class="notice" style="display:none;"></div>
+      </div>
+
+      <!-- Ticket Validation: Categories -->
+      <div class="card span6">
+        <h2>Ticket Validation — Categories</h2>
+        <p class="muted">Category list depends on Issue Raised By + Department.</p>
+
+        <form id="addCatForm" class="form">
+          <div class="field span4">
+            <label>Issue Raised By</label>
+            <select id="catIrby" data-placeholder="Select issue raised by..."></select>
+          </div>
+          <div class="field span4">
+            <label>Department</label>
+            <select id="catDept" data-placeholder="Select department..."></select>
+          </div>
+          <div class="field span4">
+            <label>Sort Order</label>
+            <input id="catSort" type="number" value="100" />
+          </div>
+
+          <div class="field span12">
+            <label>Category Label</label>
+            <input id="catLabel" type="text" placeholder="e.g., Homework / Discipline / Fee Issue" required />
+          </div>
+
+          <div class="field span12">
+            <button class="btn primary" type="submit">Add Category</button>
+          </div>
+        </form>
+
+        <div class="tablewrap maxh">
+          <table>
+            <thead>
+              <tr>
+                <th>Issue Raised By</th>
+                <th>Department</th>
+                <th>Category</th>
+                <th>Sort</th>
+                <th>Active</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="catRows"></tbody>
+          </table>
+        </div>
+
+        <div id="catMsg" class="notice" style="display:none;"></div>
+      </div>
+
+      <!-- Ticket Validation: POC Map -->
+      <div class="card span6">
+        <h2>Ticket Validation — POC Map</h2>
+        <p class="muted">Maps Reporter Email → Point Of Contact Email.</p>
+
+        <form id="addPocForm" class="form">
+          <div class="field span6">
+            <label>Reporter Email</label>
+            <input id="pocReporter" type="email" placeholder="reporter@school.com" required />
+          </div>
+          <div class="field span6">
+            <label>POC Email</label>
+            <input id="pocEmail" type="email" placeholder="poc@school.com" required />
+          </div>
+          <div class="field span12">
+            <button class="btn primary" type="submit">Save Mapping</button>
+          </div>
+        </form>
+
+        <div class="tablewrap maxh">
+          <table>
+            <thead>
+              <tr>
+                <th>Reporter</th>
+                <th>POC</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="pocRows"></tbody>
+          </table>
+        </div>
+
+        <div id="pocMsg" class="notice" style="display:none;"></div>
+      </div>
+
+      <!-- Ticket Validation: POR Map -->
+      <div class="card span6">
+        <h2>Ticket Validation — POR Map</h2>
+        <p class="muted">Maps Department → Point Of Resolution Email.</p>
+
+        <form id="addPorForm" class="form">
+          <div class="field span6">
+            <label>Department</label>
+            <select id="porDept" data-placeholder="Select department..."></select>
+          </div>
+          <div class="field span6">
+            <label>POR Email</label>
+            <input id="porEmail" type="email" placeholder="por@school.com" required />
+          </div>
+          <div class="field span12">
+            <button class="btn primary" type="submit">Save Mapping</button>
+          </div>
+        </form>
+
+        <div class="tablewrap maxh">
+          <table>
+            <thead>
+              <tr>
+                <th>Department</th>
+                <th>POR</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="porRows"></tbody>
+          </table>
+        </div>
+
+        <div id="porMsg" class="notice" style="display:none;"></div>
       </div>
 
     </div>

@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Coordinator Touchpoints — Ticket Reports</title>
+  <link rel="stylesheet" href="css/styles.css" />
+
+  <!-- ✅ Table inline editor UI -->
+  <style>
+    /* table cell editors */
+    .cellEdit, .cellSelect {
+      width: 100%;
+      min-width: 160px;
+      height: 36px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(0,0,0,0.22);
+      color: rgba(255,255,255,0.92);
+      outline: none;
+      transition: border-color .15s ease, background .15s ease, box-shadow .15s ease;
+    }
+    .cellEdit:focus, .cellSelect:focus {
+      border-color: rgba(124,92,255,0.65);
+      box-shadow: 0 0 0 3px rgba(124,92,255,0.18);
+      background: rgba(0,0,0,0.28);
+    }
+    .cellSelect {
+      cursor: pointer;
+      appearance: none;
+      background-image:
+        linear-gradient(45deg, transparent 50%, rgba(255,255,255,0.65) 50%),
+        linear-gradient(135deg, rgba(255,255,255,0.65) 50%, transparent 50%);
+      background-position:
+        calc(100% - 18px) 14px,
+        calc(100% - 12px) 14px;
+      background-size: 6px 6px, 6px 6px;
+      background-repeat: no-repeat;
+      padding-right: 34px;
+    }
+
+    /* prevent table from looking cramped */
+    table td { vertical-align: top; }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div id="navHolder"></div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>Ticket Reports</h2>
+        <p class="muted">Filter + export. Some fields are editable (POC/POR/Admin).</p>
+
+        <div class="form">
+          <div class="field span3">
+            <label>Department</label>
+            <select id="deptFilter" data-placeholder="All"></select>
+          </div>
+
+          <div class="field span3">
+            <label>Reporter</label>
+            <select id="repFilter" data-placeholder="All"></select>
+          </div>
+
+          <!-- ✅ NEW: Ownership filter -->
+          <div class="field span3">
+            <label>Ownership</label>
+            <select id="ownerFilter" data-placeholder="All"></select>
+          </div>
+
+          <div class="field span1">
+            <label>From</label>
+            <input id="fromDate" type="date" />
+          </div>
+
+          <div class="field span1">
+            <label>To</label>
+            <input id="toDate" type="date" />
+          </div>
+
+          <div class="field span8">
+            <label>Search (Ticket / Student / Category)</label>
+            <input id="q" type="text" placeholder="Type and press Apply..." />
+          </div>
+
+          <div class="field span4">
+            <label>&nbsp;</label>
+            <div class="row" style="justify-content:flex-end; gap:10px;">
+              <button id="applyBtn" class="btn primary" type="button">Apply</button>
+              <button id="clearBtn" class="btn" type="button">Clear</button>
+              <button id="exportBtn" class="btn" type="button">Export XLSX</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="msg" class="notice" style="display:none;"></div>
+
+        <div class="row" style="justify-content:space-between; margin-top:10px;">
+          <div id="meta" class="muted"></div>
+          <div class="row" style="gap:10px;">
+            <button id="prevBtn" class="btn" type="button">Prev</button>
+            <div id="pageInfo" class="muted"></div>
+            <button id="nextBtn" class="btn" type="button">Next</button>
+          </div>
+        </div>
+
+        <div class="tablewrap" style="margin-top:10px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Ticket Number</th>
+                <th>Student Name</th>
+                <th>Issue Raised By</th>
+                <th>Department</th>
+                <th>Subject</th>
+                <th>Category</th>
+                <th>Description</th>
+                <th>Date</th>
+                <th>Reporter</th>
+                <th>Mobile</th>
+
+                <th>Class</th>
+                <th>Section</th>
+                <th>Scholar</th>
+
+                <th>POC</th>
+                <th>POR</th>
+
+                <th>Change Ownership</th>
+                <th>Follow-Up/Remarks</th>
+                <th>Next Follow Up Date</th>
+                <th>Ticket Status</th>
+
+                <th>Ticket Action Comments</th>
+                <th>Ticket Parent Updates</th>
+                <th>#Actions this week</th>
+                <th>#Parent Updates this week</th>
+
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script type="module" src="js/ticketReports.js"></script>
+</body>
+</html>

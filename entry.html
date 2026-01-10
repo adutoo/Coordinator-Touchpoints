@@ -70,9 +70,21 @@
           <select data-field="ticketRaised" data-placeholder="Ticket raised? (Optional)"></select>
         </div>
 
+        <!-- ✅ Ticket Number becomes dropdown -->
         <div class="field span3">
           <label>Ticket Number (Optional)</label>
-          <input data-field="ticketNumber" type="text" placeholder="Optional ticket number" />
+          <select data-field="ticketNumber" data-placeholder="Select ticket (Optional)" disabled></select>
+        </div>
+
+        <!-- ✅ Auto fields next to ticket -->
+        <div class="field span3">
+          <label>Ticket Department (Auto)</label>
+          <input data-field="ticketDept" type="text" readonly />
+        </div>
+
+        <div class="field span3">
+          <label>Ticket Category (Auto)</label>
+          <input data-field="ticketCategory" type="text" readonly />
         </div>
 
         <div class="field span3">

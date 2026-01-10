@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Coordinator Touchpoints — Ticket Entry</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <div id="navHolder"></div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>Raise a Ticket</h2>
+        <p class="muted">Fill details and submit. Category loads from Issue Raised By + Department.</p>
+
+        <form id="ticketForm" class="form">
+          <div class="field span6">
+            <label class="required">Student Name</label>
+            <select id="tStudent" data-placeholder="Select student..." required></select>
+          </div>
+
+          <div class="field span3">
+            <label class="required">Issue Raised By</label>
+            <select id="tIssue" data-placeholder="Select..." required></select>
+          </div>
+
+          <div class="field span3">
+            <label class="required">Department</label>
+            <select id="tDept" data-placeholder="Select..." required></select>
+          </div>
+
+          <div id="subjectWrap" class="field span6" style="display:none;">
+            <label class="required">Subject</label>
+            <select id="tSubject" data-placeholder="Select subject..."></select>
+          </div>
+
+          <div class="field span6">
+            <label class="required">Category</label>
+            <select id="tCategory" data-placeholder="Select category..." required></select>
+          </div>
+
+          <div id="incidentWrap" class="field span12" style="display:none;">
+            <div class="grid">
+              <div class="field span3">
+                <label>Date Of Incident</label>
+                <input id="tIncDate" type="date" />
+              </div>
+              <div class="field span3">
+                <label>Time Of Incident</label>
+                <input id="tIncTime" type="time" />
+              </div>
+              <div class="field span3">
+                <label>Incident Reported By</label>
+                <input id="tIncBy" type="text" placeholder="Teacher/Staff/Student" />
+              </div>
+              <div class="field span3">
+                <label>Location Of Incident</label>
+                <input id="tIncLoc" type="text" placeholder="Classroom/Playground..." />
+              </div>
+            </div>
+          </div>
+
+          <div id="counselWrap" class="field span12" style="display:none;">
+            <div class="notice" style="display:block;">
+              Please fill counseling form too:
+              <a href="https://bit.ly/4fbCb3q" target="_blank">Open link</a>
+            </div>
+          </div>
+
+          <div class="field span12">
+            <label class="required">Description</label>
+            <textarea id="tDesc" rows="4" required placeholder="Write full issue here..."></textarea>
+          </div>
+
+          <div class="field span4">
+            <label>Mobile Number (Optional)</label>
+            <input id="tMobile" type="text" placeholder="Optional" />
+          </div>
+
+          <div class="field span8">
+            <label>&nbsp;</label>
+            <div class="row" style="justify-content:flex-end; gap:10px;">
+              <button id="tReset" class="btn" type="button">Reset</button>
+              <button class="btn primary" type="submit">Submit Ticket</button>
+            </div>
+          </div>
+        </form>
+
+        <div id="tMsg" class="notice" style="display:none;"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script type="module" src="js/ticketEntry.js"></script>
+</body>
+</html>
