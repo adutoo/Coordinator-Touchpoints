@@ -3,6 +3,7 @@ import { sb, SUPABASE_URL, SUPABASE_ANON_KEY } from "./supabaseClient.js";
 import { mountNav } from "./nav.js";
 import { requireAdmin } from "./auth.js";
 import { enhanceSelect, refreshSelect } from "./customSelect.js";
+import { withBusy, setBusyProgress } from "./busy.js";
 
 const userMsg = document.getElementById("userMsg");
 const userMgmtMsg = document.getElementById("userMgmtMsg");
@@ -22,6 +23,19 @@ const catMsg = document.getElementById("catMsg");
 const pocMsg = document.getElementById("pocMsg");
 const porMsg = document.getElementById("porMsg");
 
+// -------------------- Busy helpers (prevent nested popups) --------------------
+let __busyDepth = 0;
+async function runBusy(title, fn) {
+  if (__busyDepth > 0) return await fn(); // already showing a popup
+  __busyDepth++;
+  try {
+    return await withBusy(title, fn);
+  } finally {
+    __busyDepth--;
+  }
+}
+
+// -------------------- UI helpers --------------------
 function show(el, text, isErr = false) {
   if (!el) return;
   el.style.display = "block";
@@ -44,7 +58,6 @@ function escapeHtml(str) {
 }
 
 let parsedStudents = [];
-
 let ticketIssueRaisedBy = [];
 let ticketDepartments = [];
 
@@ -60,44 +73,50 @@ function setSelectOptions(selectEl, items, getValue, getLabel) {
 
 // -------------------- Boot --------------------
 (async () => {
-  await requireAdmin();
-  await mountNav("admin");
+  await runBusy("Loading admin…", async () => {
+    setBusyProgress(null, "Checking admin access…");
+    await requireAdmin();
 
-  // Admin dropdown style
-  const roleSel = document.getElementById("newRole");
-  if (roleSel) enhanceSelect(roleSel, { placeholder: roleSel.getAttribute("data-placeholder") || "Select role..." });
+    setBusyProgress(null, "Loading UI…");
+    await mountNav("admin");
 
-  // Ticket validation selects style
-  const deptReqSub = document.getElementById("deptReqSub");
-  if (deptReqSub) enhanceSelect(deptReqSub, { placeholder: deptReqSub.getAttribute("data-placeholder") || "Select..." });
+    // Admin dropdown style
+    const roleSel = document.getElementById("newRole");
+    if (roleSel) enhanceSelect(roleSel, { placeholder: roleSel.getAttribute("data-placeholder") || "Select role..." });
 
-  const catIrby = document.getElementById("catIrby");
-  const catDept = document.getElementById("catDept");
-  const porDept = document.getElementById("porDept");
-  if (catIrby) enhanceSelect(catIrby, { placeholder: catIrby.getAttribute("data-placeholder") || "Select...", search: true });
-  if (catDept) enhanceSelect(catDept, { placeholder: catDept.getAttribute("data-placeholder") || "Select...", search: true });
-  if (porDept) enhanceSelect(porDept, { placeholder: porDept.getAttribute("data-placeholder") || "Select...", search: true });
+    // Ticket validation selects style
+    const deptReqSub = document.getElementById("deptReqSub");
+    if (deptReqSub) enhanceSelect(deptReqSub, { placeholder: deptReqSub.getAttribute("data-placeholder") || "Select..." });
 
-  wireCreateAccount();
-  wireManageUsers();
-  wireFilePicker();
-  wireStudentSearch();
-  wireAddMedium();
-  wireAddObjective();
-  wireAddTicket();
+    const catIrby = document.getElementById("catIrby");
+    const catDept = document.getElementById("catDept");
+    const porDept = document.getElementById("porDept");
+    if (catIrby) enhanceSelect(catIrby, { placeholder: catIrby.getAttribute("data-placeholder") || "Select...", search: true });
+    if (catDept) enhanceSelect(catDept, { placeholder: catDept.getAttribute("data-placeholder") || "Select...", search: true });
+    if (porDept) enhanceSelect(porDept, { placeholder: porDept.getAttribute("data-placeholder") || "Select...", search: true });
 
-  // ✅ NEW: Ticket Status
-  wireAddTicketStatus();
+    wireCreateAccount();
+    wireManageUsers();
+    wireFilePicker();
+    wireStudentSearch();
+    wireAddMedium();
+    wireAddObjective();
+    wireAddTicket();
 
-  // Ticket validation wires
-  wireAddIrby();
-  wireAddDept();
-  wireAddSubject();
-  wireAddCategory();
-  wireAddPocMap();
-  wireAddPorMap();
+    // ✅ NEW: Ticket Status
+    wireAddTicketStatus();
 
-  await refreshAll();
+    // Ticket validation wires
+    wireAddIrby();
+    wireAddDept();
+    wireAddSubject();
+    wireAddCategory();
+    wireAddPocMap();
+    wireAddPorMap();
+
+    setBusyProgress(null, "Loading data…");
+    await refreshAll(); // popup stays until done
+  });
 })();
 
 // -------------------- Create Account --------------------
@@ -109,53 +128,56 @@ function wireCreateAccount() {
     e.preventDefault();
     hide(userMsg);
 
-    const email = document.getElementById("newEmail")?.value?.trim() || "";
-    const password = document.getElementById("newPassword")?.value || "";
-    const display_name = document.getElementById("newName")?.value?.trim() || "";
-    const role = document.getElementById("newRole")?.value || "coordinator";
+    await runBusy("Creating account…", async () => {
+      const email = document.getElementById("newEmail")?.value?.trim() || "";
+      const password = document.getElementById("newPassword")?.value || "";
+      const display_name = document.getElementById("newName")?.value?.trim() || "";
+      const role = document.getElementById("newRole")?.value || "coordinator";
 
-    if (!email || !password || !display_name) {
-      return show(userMsg, "Email, Display Name, and Password are required.", true);
-    }
+      if (!email || !password || !display_name) {
+        return show(userMsg, "Email, Display Name, and Password are required.", true);
+      }
 
-    const { data: sessData, error: sessErr } = await sb.auth.getSession();
-    if (sessErr) return show(userMsg, sessErr.message, true);
+      setBusyProgress(null, "Reading session…");
+      const { data: sessData, error: sessErr } = await sb.auth.getSession();
+      if (sessErr) return show(userMsg, sessErr.message, true);
 
-    const token = sessData?.session?.access_token;
-    if (!token || token.split(".").length !== 3) {
-      return show(userMsg, "Session token missing/invalid. Logout → Login again.", true);
-    }
+      const token = sessData?.session?.access_token;
+      if (!token || token.split(".").length !== 3) {
+        return show(userMsg, "Session token missing/invalid. Logout → Login again.", true);
+      }
 
-    show(userMsg, "Creating account…");
+      setBusyProgress(null, "Calling create function…");
+      const fnUrl = `${SUPABASE_URL}/functions/v1/create-coordinator`;
+      const res = await fetch(fnUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ email, password, display_name, role }),
+      });
 
-    const fnUrl = `${SUPABASE_URL}/functions/v1/create-coordinator`;
-    const res = await fetch(fnUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ email, password, display_name, role }),
+      const text = await res.text();
+      if (!res.ok) return show(userMsg, `HTTP ${res.status} | ${text}`, true);
+
+      let out;
+      try { out = JSON.parse(text); } catch { out = null; }
+      if (!out?.ok) return show(userMsg, out?.msg || "Create failed.", true);
+
+      show(userMsg, "Account created ✅");
+
+      form.reset();
+      const roleSel = document.getElementById("newRole");
+      if (roleSel) {
+        roleSel.value = "coordinator";
+        refreshSelect(roleSel);
+      }
+
+      setBusyProgress(null, "Refreshing users…");
+      await refreshUsers();
     });
-
-    const text = await res.text();
-    if (!res.ok) return show(userMsg, `HTTP ${res.status} | ${text}`, true);
-
-    let out;
-    try { out = JSON.parse(text); } catch { out = null; }
-    if (!out?.ok) return show(userMsg, out?.msg || "Create failed.", true);
-
-    show(userMsg, "Account created ✅");
-
-    form.reset();
-    const roleSel = document.getElementById("newRole");
-    if (roleSel) {
-      roleSel.value = "coordinator";
-      refreshSelect(roleSel);
-    }
-
-    await refreshUsers();
   });
 }
 
@@ -170,11 +192,18 @@ function wireManageUsers() {
   let t = null;
   const trigger = () => {
     clearTimeout(t);
-    t = setTimeout(refreshUsers, 180);
+    t = setTimeout(refreshUsers, 180); // keep light (no popup spam)
   };
 
   userSearch.addEventListener("input", trigger);
-  userRefreshBtn.addEventListener("click", refreshUsers);
+
+  userRefreshBtn.addEventListener("click", async () => {
+    hide(userMgmtMsg);
+    await runBusy("Loading users…", async () => {
+      setBusyProgress(null, "Fetching…");
+      await refreshUsers();
+    });
+  });
 
   userRows.addEventListener("click", async (e) => {
     const btn = e.target.closest("button[data-del-user]");
@@ -188,32 +217,37 @@ function wireManageUsers() {
     if (!ok) return;
 
     hide(userMgmtMsg);
-    show(userMgmtMsg, "Deleting…");
 
-    const { data: sessData } = await sb.auth.getSession();
-    const token = sessData?.session?.access_token;
-    if (!token) return show(userMgmtMsg, "Session missing. Login again.", true);
+    await runBusy("Deleting user…", async () => {
+      setBusyProgress(null, "Reading session…");
+      const { data: sessData } = await sb.auth.getSession();
+      const token = sessData?.session?.access_token;
+      if (!token) return show(userMgmtMsg, "Session missing. Login again.", true);
 
-    const fnUrl = `${SUPABASE_URL}/functions/v1/delete-user`;
-    const res = await fetch(fnUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ user_id: userId }),
+      setBusyProgress(null, "Calling delete function…");
+      const fnUrl = `${SUPABASE_URL}/functions/v1/delete-user`;
+      const res = await fetch(fnUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ user_id: userId }),
+      });
+
+      const text = await res.text();
+      if (!res.ok) return show(userMgmtMsg, `HTTP ${res.status} | ${text}`, true);
+
+      let out;
+      try { out = JSON.parse(text); } catch { out = null; }
+      if (!out?.ok) return show(userMgmtMsg, out?.msg || "Delete failed.", true);
+
+      show(userMgmtMsg, "User deleted ✅");
+
+      setBusyProgress(null, "Refreshing list…");
+      await refreshUsers();
     });
-
-    const text = await res.text();
-    if (!res.ok) return show(userMgmtMsg, `HTTP ${res.status} | ${text}`, true);
-
-    let out;
-    try { out = JSON.parse(text); } catch { out = null; }
-    if (!out?.ok) return show(userMgmtMsg, out?.msg || "Delete failed.", true);
-
-    show(userMgmtMsg, "User deleted ✅");
-    await refreshUsers();
   });
 }
 
@@ -336,22 +370,27 @@ function wireFilePicker() {
     hide(stuMsg);
     if (!parsedStudents.length) return show(stuMsg, "Nothing parsed.", true);
 
-    show(stuMsg, "Uploading…");
+    await runBusy("Uploading students…", async () => {
+      const chunk = 500;
+      let done = 0;
 
-    const chunk = 500;
-    let done = 0;
+      while (done < parsedStudents.length) {
+        const batch = parsedStudents.slice(done, done + chunk);
+        const pct = Math.round((done / parsedStudents.length) * 100);
+        setBusyProgress(pct, `Uploading ${done}/${parsedStudents.length}…`);
 
-    while (done < parsedStudents.length) {
-      const batch = parsedStudents.slice(done, done + chunk);
-      const { error } = await sb.from("students").upsert(batch, { onConflict: "child_name" });
-      if (error) return show(stuMsg, error.message, true);
+        const { error } = await sb.from("students").upsert(batch, { onConflict: "child_name" });
+        if (error) return show(stuMsg, error.message, true);
 
-      done += batch.length;
-      show(stuMsg, `Uploaded ${done}/${parsedStudents.length}…`);
-    }
+        done += batch.length;
+        show(stuMsg, `Uploaded ${done}/${parsedStudents.length}…`);
+      }
 
-    show(stuMsg, "Students uploaded ✅");
-    await refreshStudentsCount();
+      setBusyProgress(100, "Finalizing…");
+      show(stuMsg, "Students uploaded ✅");
+
+      await refreshStudentsCount();
+    });
   });
 }
 
@@ -410,10 +449,15 @@ function wireStudentSearch() {
   let t = null;
   stuSearch.addEventListener("input", () => {
     clearTimeout(t);
-    t = setTimeout(run, 200);
+    t = setTimeout(run, 200); // keep light
   });
 
-  stuRefreshBtn.addEventListener("click", run);
+  stuRefreshBtn.addEventListener("click", async () => {
+    await runBusy("Searching students…", async () => {
+      setBusyProgress(null, "Searching…");
+      await run();
+    });
+  });
 
   stuRows.addEventListener("click", async (e) => {
     const btn = e.target.closest("button[data-del-stu]");
@@ -427,14 +471,18 @@ function wireStudentSearch() {
     if (!ok) return;
 
     hide(stuDelMsg);
-    show(stuDelMsg, "Deleting…");
 
-    const { error } = await sb.from("students").delete().eq("id", id);
-    if (error) return show(stuDelMsg, error.message, true);
+    await runBusy("Deleting student…", async () => {
+      setBusyProgress(null, "Deleting from DB…");
+      const { error } = await sb.from("students").delete().eq("id", id);
+      if (error) return show(stuDelMsg, error.message, true);
 
-    show(stuDelMsg, "Student deleted ✅");
-    await run();
-    await refreshStudentsCount();
+      show(stuDelMsg, "Student deleted ✅");
+
+      setBusyProgress(null, "Refreshing…");
+      await run();
+      await refreshStudentsCount();
+    });
   });
 
   stuRows.innerHTML = `<tr><td colspan="6">Type something to search…</td></tr>`;
@@ -449,18 +497,22 @@ function wireAddMedium() {
     e.preventDefault();
     hide(medMsg);
 
-    const label = document.getElementById("medLabel")?.value?.trim() || "";
-    const time_min = Math.max(1, Number(document.getElementById("medTimeMin")?.value || 1));
-    if (!label) return show(medMsg, "Medium Label is required.", true);
+    await runBusy("Saving medium…", async () => {
+      const label = document.getElementById("medLabel")?.value?.trim() || "";
+      const time_min = Math.max(1, Number(document.getElementById("medTimeMin")?.value || 1));
+      if (!label) return show(medMsg, "Medium Label is required.", true);
 
-    const { error } = await sb.from("mediums").insert({ label, time_min, is_active: true, sort_order: 100 });
-    if (error) return show(medMsg, error.message, true);
+      const { error } = await sb.from("mediums").insert({ label, time_min, is_active: true, sort_order: 100 });
+      if (error) return show(medMsg, error.message, true);
 
-    show(medMsg, "Medium added ✅");
-    form.reset();
-    const t = document.getElementById("medTimeMin");
-    if (t) t.value = "1";
-    await refreshMediums();
+      show(medMsg, "Medium added ✅");
+      form.reset();
+      const t = document.getElementById("medTimeMin");
+      if (t) t.value = "1";
+
+      setBusyProgress(null, "Refreshing…");
+      await refreshMediums();
+    });
   });
 }
 
@@ -494,22 +546,26 @@ async function refreshMediums() {
 
   mediumRows.querySelectorAll("button[data-act='saveTime']").forEach(btn => {
     btn.addEventListener("click", async () => {
-      const id = Number(btn.dataset.id);
-      const input = mediumRows.querySelector(`input[data-time-id="${id}"]`);
-      const time_min = Math.max(1, Number(input?.value || 1));
-      const { error } = await sb.from("mediums").update({ time_min }).eq("id", id);
-      if (error) return show(medMsg, error.message, true);
-      show(medMsg, "Time updated ✅");
+      await runBusy("Saving…", async () => {
+        const id = Number(btn.dataset.id);
+        const input = mediumRows.querySelector(`input[data-time-id="${id}"]`);
+        const time_min = Math.max(1, Number(input?.value || 1));
+        const { error } = await sb.from("mediums").update({ time_min }).eq("id", id);
+        if (error) return show(medMsg, error.message, true);
+        show(medMsg, "Time updated ✅");
+      });
     });
   });
 
   mediumRows.querySelectorAll("button[data-act='toggle']").forEach(btn => {
     btn.addEventListener("click", async () => {
-      const id = Number(btn.dataset.id);
-      const is_active = btn.dataset.val === "1";
-      const { error } = await sb.from("mediums").update({ is_active }).eq("id", id);
-      if (error) return show(medMsg, error.message, true);
-      await refreshMediums();
+      await runBusy("Updating…", async () => {
+        const id = Number(btn.dataset.id);
+        const is_active = btn.dataset.val === "1";
+        const { error } = await sb.from("mediums").update({ is_active }).eq("id", id);
+        if (error) return show(medMsg, error.message, true);
+        await refreshMediums();
+      });
     });
   });
 }
@@ -523,15 +579,17 @@ function wireAddObjective() {
     e.preventDefault();
     hide(objMsg);
 
-    const label = document.getElementById("objLabel")?.value?.trim() || "";
-    if (!label) return show(objMsg, "Objective Label is required.", true);
+    await runBusy("Saving objective…", async () => {
+      const label = document.getElementById("objLabel")?.value?.trim() || "";
+      if (!label) return show(objMsg, "Objective Label is required.", true);
 
-    const { error } = await sb.from("objectives").insert({ label, is_active: true, sort_order: 100 });
-    if (error) return show(objMsg, error.message, true);
+      const { error } = await sb.from("objectives").insert({ label, is_active: true, sort_order: 100 });
+      if (error) return show(objMsg, error.message, true);
 
-    show(objMsg, "Objective added ✅");
-    form.reset();
-    await refreshObjectives();
+      show(objMsg, "Objective added ✅");
+      form.reset();
+      await refreshObjectives();
+    });
   });
 }
 
@@ -559,11 +617,13 @@ async function refreshObjectives() {
 
   objectiveRows.querySelectorAll("button[data-act='toggle']").forEach(btn => {
     btn.addEventListener("click", async () => {
-      const id = Number(btn.dataset.id);
-      const is_active = btn.dataset.val === "1";
-      const { error } = await sb.from("objectives").update({ is_active }).eq("id", id);
-      if (error) return show(objMsg, error.message, true);
-      await refreshObjectives();
+      await runBusy("Updating…", async () => {
+        const id = Number(btn.dataset.id);
+        const is_active = btn.dataset.val === "1";
+        const { error } = await sb.from("objectives").update({ is_active }).eq("id", id);
+        if (error) return show(objMsg, error.message, true);
+        await refreshObjectives();
+      });
     });
   });
 }
@@ -577,15 +637,17 @@ function wireAddTicket() {
     e.preventDefault();
     hide(ticketMsg);
 
-    const label = document.getElementById("ticketLabel")?.value?.trim() || "";
-    if (!label) return show(ticketMsg, "Option Label is required.", true);
+    await runBusy("Saving option…", async () => {
+      const label = document.getElementById("ticketLabel")?.value?.trim() || "";
+      if (!label) return show(ticketMsg, "Option Label is required.", true);
 
-    const { error } = await sb.from("ticket_raised_options").insert({ label, is_active: true, sort_order: 100 });
-    if (error) return show(ticketMsg, error.message, true);
+      const { error } = await sb.from("ticket_raised_options").insert({ label, is_active: true, sort_order: 100 });
+      if (error) return show(ticketMsg, error.message, true);
 
-    show(ticketMsg, "Ticket option added ✅");
-    form.reset();
-    await refreshTicketOptions();
+      show(ticketMsg, "Ticket option added ✅");
+      form.reset();
+      await refreshTicketOptions();
+    });
   });
 }
 
@@ -613,11 +675,13 @@ async function refreshTicketOptions() {
 
   ticketRows.querySelectorAll("button[data-act='toggle']").forEach(btn => {
     btn.addEventListener("click", async () => {
-      const id = Number(btn.dataset.id);
-      const is_active = btn.dataset.val === "1";
-      const { error } = await sb.from("ticket_raised_options").update({ is_active }).eq("id", id);
-      if (error) return show(ticketMsg, error.message, true);
-      await refreshTicketOptions();
+      await runBusy("Updating…", async () => {
+        const id = Number(btn.dataset.id);
+        const is_active = btn.dataset.val === "1";
+        const { error } = await sb.from("ticket_raised_options").update({ is_active }).eq("id", id);
+        if (error) return show(ticketMsg, error.message, true);
+        await refreshTicketOptions();
+      });
     });
   });
 }
@@ -631,23 +695,27 @@ function wireAddTicketStatus() {
     e.preventDefault();
     hide(statusMsg);
 
-    const label = document.getElementById("statusLabel")?.value?.trim() || "";
-    const sort_order = Number(document.getElementById("statusSort")?.value || 100);
+    await runBusy("Saving status…", async () => {
+      const label = document.getElementById("statusLabel")?.value?.trim() || "";
+      const sort_order = Number(document.getElementById("statusSort")?.value || 100);
 
-    if (!label) return show(statusMsg, "Status Label is required.", true);
+      if (!label) return show(statusMsg, "Status Label is required.", true);
 
-    const { error } = await sb.from("ticket_statuses").insert({
-      label,
-      is_active: true,
-      sort_order,
+      const { error } = await sb.from("ticket_statuses").insert({
+        label,
+        is_active: true,
+        sort_order,
+      });
+
+      if (error) return show(statusMsg, error.message, true);
+
+      show(statusMsg, "Status added ✅");
+      form.reset();
+      const s = document.getElementById("statusSort");
+      if (s) s.value = "100";
+
+      await refreshTicketStatuses();
     });
-
-    if (error) return show(statusMsg, error.message, true);
-
-    show(statusMsg, "Status added ✅");
-    form.reset();
-    document.getElementById("statusSort").value = "100";
-    await refreshTicketStatuses();
   });
 }
 
@@ -693,26 +761,30 @@ async function refreshTicketStatuses() {
 
   statusRows.querySelectorAll("button[data-act='saveStatus']").forEach(btn => {
     btn.addEventListener("click", async () => {
-      const id = Number(btn.dataset.id);
-      const sort_order = Number(statusRows.querySelector(`input[data-status-sort="${id}"]`)?.value || 100);
+      await runBusy("Saving…", async () => {
+        const id = Number(btn.dataset.id);
+        const sort_order = Number(statusRows.querySelector(`input[data-status-sort="${id}"]`)?.value || 100);
 
-      const { error } = await sb.from("ticket_statuses").update({ sort_order }).eq("id", id);
-      if (error) return show(statusMsg, error.message, true);
+        const { error } = await sb.from("ticket_statuses").update({ sort_order }).eq("id", id);
+        if (error) return show(statusMsg, error.message, true);
 
-      show(statusMsg, "Saved ✅");
-      await refreshTicketStatuses();
+        show(statusMsg, "Saved ✅");
+        await refreshTicketStatuses();
+      });
     });
   });
 
   statusRows.querySelectorAll("button[data-act='toggleStatus']").forEach(btn => {
     btn.addEventListener("click", async () => {
-      const id = Number(btn.dataset.id);
-      const is_active = btn.dataset.val === "1";
+      await runBusy("Updating…", async () => {
+        const id = Number(btn.dataset.id);
+        const is_active = btn.dataset.val === "1";
 
-      const { error } = await sb.from("ticket_statuses").update({ is_active }).eq("id", id);
-      if (error) return show(statusMsg, error.message, true);
+        const { error } = await sb.from("ticket_statuses").update({ is_active }).eq("id", id);
+        if (error) return show(statusMsg, error.message, true);
 
-      await refreshTicketStatuses();
+        await refreshTicketStatuses();
+      });
     });
   });
 }
@@ -726,18 +798,22 @@ function wireAddIrby() {
     e.preventDefault();
     hide(irbyMsg);
 
-    const label = document.getElementById("irbyLabel")?.value?.trim() || "";
-    const sort_order = Number(document.getElementById("irbySort")?.value || 100);
+    await runBusy("Saving…", async () => {
+      const label = document.getElementById("irbyLabel")?.value?.trim() || "";
+      const sort_order = Number(document.getElementById("irbySort")?.value || 100);
 
-    if (!label) return show(irbyMsg, "Label is required.", true);
+      if (!label) return show(irbyMsg, "Label is required.", true);
 
-    const { error } = await sb.from("ticket_issue_raised_by").insert({ label, is_active: true, sort_order });
-    if (error) return show(irbyMsg, error.message, true);
+      const { error } = await sb.from("ticket_issue_raised_by").insert({ label, is_active: true, sort_order });
+      if (error) return show(irbyMsg, error.message, true);
 
-    show(irbyMsg, "Added ✅");
-    form.reset();
-    document.getElementById("irbySort").value = "100";
-    await refreshIrby();
+      show(irbyMsg, "Added ✅");
+      form.reset();
+      const x = document.getElementById("irbySort");
+      if (x) x.value = "100";
+
+      await refreshIrby();
+    });
   });
 }
 
@@ -774,11 +850,13 @@ async function refreshIrby() {
 
   irbyRows.querySelectorAll("button[data-act='toggleIrby']").forEach(btn => {
     btn.addEventListener("click", async () => {
-      const id = Number(btn.dataset.id);
-      const is_active = btn.dataset.val === "1";
-      const { error } = await sb.from("ticket_issue_raised_by").update({ is_active }).eq("id", id);
-      if (error) return show(irbyMsg, error.message, true);
-      await refreshIrby();
+      await runBusy("Updating…", async () => {
+        const id = Number(btn.dataset.id);
+        const is_active = btn.dataset.val === "1";
+        const { error } = await sb.from("ticket_issue_raised_by").update({ is_active }).eq("id", id);
+        if (error) return show(irbyMsg, error.message, true);
+        await refreshIrby();
+      });
     });
   });
 }
@@ -795,20 +873,24 @@ function wireAddDept() {
     e.preventDefault();
     hide(deptMsg);
 
-    const label = document.getElementById("deptLabel")?.value?.trim() || "";
-    const requires_subject = (document.getElementById("deptReqSub")?.value || "false") === "true";
-    const sort_order = Number(document.getElementById("deptSort")?.value || 100);
+    await runBusy("Saving…", async () => {
+      const label = document.getElementById("deptLabel")?.value?.trim() || "";
+      const requires_subject = (document.getElementById("deptReqSub")?.value || "false") === "true";
+      const sort_order = Number(document.getElementById("deptSort")?.value || 100);
 
-    if (!label) return show(deptMsg, "Department label is required.", true);
+      if (!label) return show(deptMsg, "Department label is required.", true);
 
-    const { error } = await sb.from("ticket_departments").insert({ label, requires_subject, is_active: true, sort_order });
-    if (error) return show(deptMsg, error.message, true);
+      const { error } = await sb.from("ticket_departments").insert({ label, requires_subject, is_active: true, sort_order });
+      if (error) return show(deptMsg, error.message, true);
 
-    show(deptMsg, "Added ✅");
-    form.reset();
-    document.getElementById("deptSort").value = "100";
-    if (deptReqSub) { deptReqSub.value = "false"; refreshSelect(deptReqSub); }
-    await refreshDepts();
+      show(deptMsg, "Added ✅");
+      form.reset();
+      const ds = document.getElementById("deptSort");
+      if (ds) ds.value = "100";
+      if (deptReqSub) { deptReqSub.value = "false"; refreshSelect(deptReqSub); }
+
+      await refreshDepts();
+    });
   });
 }
 
@@ -856,25 +938,29 @@ async function refreshDepts() {
 
   deptRows.querySelectorAll("button[data-act='saveDept']").forEach(btn => {
     btn.addEventListener("click", async () => {
-      const id = Number(btn.dataset.id);
-      const req = !!deptRows.querySelector(`input[type="checkbox"][data-dept-req="${id}"]`)?.checked;
-      const sort = Number(deptRows.querySelector(`input[data-dept-sort="${id}"]`)?.value || 100);
+      await runBusy("Saving…", async () => {
+        const id = Number(btn.dataset.id);
+        const req = !!deptRows.querySelector(`input[type="checkbox"][data-dept-req="${id}"]`)?.checked;
+        const sort = Number(deptRows.querySelector(`input[data-dept-sort="${id}"]`)?.value || 100);
 
-      const { error } = await sb.from("ticket_departments").update({ requires_subject: req, sort_order: sort }).eq("id", id);
-      if (error) return show(deptMsg, error.message, true);
+        const { error } = await sb.from("ticket_departments").update({ requires_subject: req, sort_order: sort }).eq("id", id);
+        if (error) return show(deptMsg, error.message, true);
 
-      show(deptMsg, "Saved ✅");
-      await refreshDepts();
+        show(deptMsg, "Saved ✅");
+        await refreshDepts();
+      });
     });
   });
 
   deptRows.querySelectorAll("button[data-act='toggleDept']").forEach(btn => {
     btn.addEventListener("click", async () => {
-      const id = Number(btn.dataset.id);
-      const is_active = btn.dataset.val === "1";
-      const { error } = await sb.from("ticket_departments").update({ is_active }).eq("id", id);
-      if (error) return show(deptMsg, error.message, true);
-      await refreshDepts();
+      await runBusy("Updating…", async () => {
+        const id = Number(btn.dataset.id);
+        const is_active = btn.dataset.val === "1";
+        const { error } = await sb.from("ticket_departments").update({ is_active }).eq("id", id);
+        if (error) return show(deptMsg, error.message, true);
+        await refreshDepts();
+      });
     });
   });
 }
@@ -888,17 +974,21 @@ function wireAddSubject() {
     e.preventDefault();
     hide(subjMsg);
 
-    const label = document.getElementById("subjLabel")?.value?.trim() || "";
-    const sort_order = Number(document.getElementById("subjSort")?.value || 100);
-    if (!label) return show(subjMsg, "Label is required.", true);
+    await runBusy("Saving…", async () => {
+      const label = document.getElementById("subjLabel")?.value?.trim() || "";
+      const sort_order = Number(document.getElementById("subjSort")?.value || 100);
+      if (!label) return show(subjMsg, "Label is required.", true);
 
-    const { error } = await sb.from("ticket_subjects").insert({ label, is_active: true, sort_order });
-    if (error) return show(subjMsg, error.message, true);
+      const { error } = await sb.from("ticket_subjects").insert({ label, is_active: true, sort_order });
+      if (error) return show(subjMsg, error.message, true);
 
-    show(subjMsg, "Added ✅");
-    form.reset();
-    document.getElementById("subjSort").value = "100";
-    await refreshSubjects();
+      show(subjMsg, "Added ✅");
+      form.reset();
+      const ss = document.getElementById("subjSort");
+      if (ss) ss.value = "100";
+
+      await refreshSubjects();
+    });
   });
 }
 
@@ -930,11 +1020,13 @@ async function refreshSubjects() {
 
   subjRows.querySelectorAll("button[data-act='toggleSubj']").forEach(btn => {
     btn.addEventListener("click", async () => {
-      const id = Number(btn.dataset.id);
-      const is_active = btn.dataset.val === "1";
-      const { error } = await sb.from("ticket_subjects").update({ is_active }).eq("id", id);
-      if (error) return show(subjMsg, error.message, true);
-      await refreshSubjects();
+      await runBusy("Updating…", async () => {
+        const id = Number(btn.dataset.id);
+        const is_active = btn.dataset.val === "1";
+        const { error } = await sb.from("ticket_subjects").update({ is_active }).eq("id", id);
+        if (error) return show(subjMsg, error.message, true);
+        await refreshSubjects();
+      });
     });
   });
 }
@@ -948,29 +1040,31 @@ function wireAddCategory() {
     e.preventDefault();
     hide(catMsg);
 
-    const issue_raised_by = document.getElementById("catIrby")?.value || "";
-    const department = document.getElementById("catDept")?.value || "";
-    const label = document.getElementById("catLabel")?.value?.trim() || "";
-    const sort_order = Number(document.getElementById("catSort")?.value || 100);
+    await runBusy("Saving…", async () => {
+      const issue_raised_by = document.getElementById("catIrby")?.value || "";
+      const department = document.getElementById("catDept")?.value || "";
+      const label = document.getElementById("catLabel")?.value?.trim() || "";
+      const sort_order = Number(document.getElementById("catSort")?.value || 100);
 
-    if (!issue_raised_by) return show(catMsg, "Select Issue Raised By.", true);
-    if (!department) return show(catMsg, "Select Department.", true);
-    if (!label) return show(catMsg, "Category label is required.", true);
+      if (!issue_raised_by) return show(catMsg, "Select Issue Raised By.", true);
+      if (!department) return show(catMsg, "Select Department.", true);
+      if (!label) return show(catMsg, "Category label is required.", true);
 
-    const { error } = await sb.from("ticket_categories").insert({
-      issue_raised_by,
-      department,
-      label,
-      is_active: true,
-      sort_order
+      const { error } = await sb.from("ticket_categories").insert({
+        issue_raised_by,
+        department,
+        label,
+        is_active: true,
+        sort_order
+      });
+
+      if (error) return show(catMsg, error.message, true);
+
+      show(catMsg, "Added ✅");
+      document.getElementById("catLabel").value = "";
+      document.getElementById("catSort").value = "100";
+      await refreshCategories();
     });
-
-    if (error) return show(catMsg, error.message, true);
-
-    show(catMsg, "Added ✅");
-    document.getElementById("catLabel").value = "";
-    document.getElementById("catSort").value = "100";
-    await refreshCategories();
   });
 }
 
@@ -1011,11 +1105,13 @@ async function refreshCategories() {
 
   catRows.querySelectorAll("button[data-act='toggleCat']").forEach(btn => {
     btn.addEventListener("click", async () => {
-      const id = Number(btn.dataset.id);
-      const is_active = btn.dataset.val === "1";
-      const { error } = await sb.from("ticket_categories").update({ is_active }).eq("id", id);
-      if (error) return show(catMsg, error.message, true);
-      await refreshCategories();
+      await runBusy("Updating…", async () => {
+        const id = Number(btn.dataset.id);
+        const is_active = btn.dataset.val === "1";
+        const { error } = await sb.from("ticket_categories").update({ is_active }).eq("id", id);
+        if (error) return show(catMsg, error.message, true);
+        await refreshCategories();
+      });
     });
   });
 }
@@ -1029,20 +1125,22 @@ function wireAddPocMap() {
     e.preventDefault();
     hide(pocMsg);
 
-    const reporter_email = document.getElementById("pocReporter")?.value?.trim() || "";
-    const poc_email = document.getElementById("pocEmail")?.value?.trim() || "";
+    await runBusy("Saving…", async () => {
+      const reporter_email = document.getElementById("pocReporter")?.value?.trim() || "";
+      const poc_email = document.getElementById("pocEmail")?.value?.trim() || "";
 
-    if (!reporter_email || !poc_email) return show(pocMsg, "Both emails are required.", true);
+      if (!reporter_email || !poc_email) return show(pocMsg, "Both emails are required.", true);
 
-    const { error } = await sb
-      .from("ticket_poc_map")
-      .upsert({ reporter_email, poc_email }, { onConflict: "reporter_email" });
+      const { error } = await sb
+        .from("ticket_poc_map")
+        .upsert({ reporter_email, poc_email }, { onConflict: "reporter_email" });
 
-    if (error) return show(pocMsg, error.message, true);
+      if (error) return show(pocMsg, error.message, true);
 
-    show(pocMsg, "Saved ✅");
-    form.reset();
-    await refreshPocMap();
+      show(pocMsg, "Saved ✅");
+      form.reset();
+      await refreshPocMap();
+    });
   });
 }
 
@@ -1076,11 +1174,13 @@ async function refreshPocMap() {
       const ok = confirm(`Delete mapping for ${reporter}?`);
       if (!ok) return;
 
-      const { error } = await sb.from("ticket_poc_map").delete().eq("reporter_email", reporter);
-      if (error) return show(pocMsg, error.message, true);
+      await runBusy("Deleting…", async () => {
+        const { error } = await sb.from("ticket_poc_map").delete().eq("reporter_email", reporter);
+        if (error) return show(pocMsg, error.message, true);
 
-      show(pocMsg, "Deleted ✅");
-      await refreshPocMap();
+        show(pocMsg, "Deleted ✅");
+        await refreshPocMap();
+      });
     });
   });
 }
@@ -1094,21 +1194,23 @@ function wireAddPorMap() {
     e.preventDefault();
     hide(porMsg);
 
-    const department = document.getElementById("porDept")?.value || "";
-    const por_email = document.getElementById("porEmail")?.value?.trim() || "";
+    await runBusy("Saving…", async () => {
+      const department = document.getElementById("porDept")?.value || "";
+      const por_email = document.getElementById("porEmail")?.value?.trim() || "";
 
-    if (!department) return show(porMsg, "Select department.", true);
-    if (!por_email) return show(porMsg, "POR email is required.", true);
+      if (!department) return show(porMsg, "Select department.", true);
+      if (!por_email) return show(porMsg, "POR email is required.", true);
 
-    const { error } = await sb
-      .from("ticket_por_map")
-      .upsert({ department, por_email }, { onConflict: "department" });
+      const { error } = await sb
+        .from("ticket_por_map")
+        .upsert({ department, por_email }, { onConflict: "department" });
 
-    if (error) return show(porMsg, error.message, true);
+      if (error) return show(porMsg, error.message, true);
 
-    show(porMsg, "Saved ✅");
-    document.getElementById("porEmail").value = "";
-    await refreshPorMap();
+      show(porMsg, "Saved ✅");
+      document.getElementById("porEmail").value = "";
+      await refreshPorMap();
+    });
   });
 }
 
@@ -1142,35 +1244,50 @@ async function refreshPorMap() {
       const ok = confirm(`Delete POR mapping for ${dept}?`);
       if (!ok) return;
 
-      const { error } = await sb.from("ticket_por_map").delete().eq("department", dept);
-      if (error) return show(porMsg, error.message, true);
+      await runBusy("Deleting…", async () => {
+        const { error } = await sb.from("ticket_por_map").delete().eq("department", dept);
+        if (error) return show(porMsg, error.message, true);
 
-      show(porMsg, "Deleted ✅");
-      await refreshPorMap();
+        show(porMsg, "Deleted ✅");
+        await refreshPorMap();
+      });
     });
   });
 }
 
 // -------------------- Refresh helpers --------------------
 async function refreshAll() {
-  await Promise.all([
-    refreshUsers(),
-    refreshMediums(),
-    refreshObjectives(),
-    refreshTicketOptions(),
-    refreshTicketStatuses(), // ✅ NEW
-    refreshStudentsCount(),
+  // sequential so popup message makes sense
+  setBusyProgress(5, "Loading users…");
+  await refreshUsers();
 
-    // ticket validation
-    refreshIrby(),
-    refreshDepts(),
-    refreshSubjects(),
-    refreshCategories(),
-    refreshPocMap(),
-    refreshPorMap(),
-  ]);
+  setBusyProgress(15, "Loading mediums…");
+  await refreshMediums();
+
+  setBusyProgress(25, "Loading objectives…");
+  await refreshObjectives();
+
+  setBusyProgress(35, "Loading ticket options…");
+  await refreshTicketOptions();
+
+  setBusyProgress(45, "Loading ticket statuses…");
+  await refreshTicketStatuses();
+
+  setBusyProgress(55, "Counting students…");
+  await refreshStudentsCount();
+
+  setBusyProgress(65, "Loading ticket validations…");
+  await refreshIrby();
+  await refreshDepts();
+  await refreshSubjects();
+  await refreshCategories();
+  await refreshPocMap();
+  await refreshPorMap();
+
+  setBusyProgress(100, "Done");
 }
 
+// (these two were in your file elsewhere; kept calls intact)
 async function refreshStudentsCount() {
   const uploadMeta = document.getElementById("uploadMeta");
   const { count, error } = await sb.from("students").select("id", { count: "exact", head: true });
