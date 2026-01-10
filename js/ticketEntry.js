@@ -3,6 +3,7 @@ import { sb } from "./supabaseClient.js";
 import { mountNav } from "./nav.js";
 import { getMe, getMyProfile } from "./auth.js";
 import { enhanceSelect, refreshSelect } from "./customSelect.js";
+import { withBusy, setBusyProgress } from "./busy.js";
 
 const tStudent = document.getElementById("tStudent");
 const tIssue = document.getElementById("tIssue");
@@ -90,6 +91,7 @@ function applyConditionals() {
 }
 
 async function loadCategories() {
+  // Reset category UI always (no DB)
   tCategory.innerHTML = `<option value=""></option>`;
   refreshSelect(tCategory);
 
@@ -97,80 +99,105 @@ async function loadCategories() {
   const dept = tDept.value;
   if (!issue || !dept) return;
 
-  const { data, error } = await sb
-    .from("ticket_categories")
-    .select("label")
-    .eq("is_active", true)
-    .eq("issue_raised_by", issue)
-    .eq("department", dept)
-    .order("sort_order")
-    .order("label");
+  // DB task => show popup progress
+  await withBusy("Loading categories…", async () => {
+    const { data, error } = await sb
+      .from("ticket_categories")
+      .select("label")
+      .eq("is_active", true)
+      .eq("issue_raised_by", issue)
+      .eq("department", dept)
+      .order("sort_order")
+      .order("label");
 
-  if (error) return show(error.message, true);
+    if (error) {
+      show(error.message, true);
+      return;
+    }
 
-  tCategory.innerHTML =
-    `<option value=""></option>` +
-    (data || []).map(x => `<option value="${x.label}">${x.label}</option>`).join("");
+    tCategory.innerHTML =
+      `<option value=""></option>` +
+      (data || []).map(x => `<option value="${x.label}">${x.label}</option>`).join("");
 
-  refreshSelect(tCategory);
+    refreshSelect(tCategory);
+  });
 }
 
 (async () => {
   await mountNav("ticket-entry");
 
-  // Require login
-  const me = await getMe();
-  if (!me) return show("Not logged in.", true);
+  try {
+    await withBusy("Loading Ticket Entry…", async () => {
+      setBusyProgress(null, "Checking login…");
 
-  // Load validations + students
-  const [issueR, deptR, subjR] = await Promise.all([
-    sb.from("ticket_issue_raised_by").select("label,is_active").eq("is_active", true).order("sort_order").order("label"),
-    sb.from("ticket_departments").select("label,requires_subject,is_active").eq("is_active", true).order("sort_order").order("label"),
-    sb.from("ticket_subjects").select("label,is_active").eq("is_active", true).order("sort_order").order("label"),
-  ]);
+      // Require login
+      const me = await getMe();
+      if (!me) {
+        show("Not logged in.", true);
+        return;
+      }
 
-  if (issueR.error) return show(issueR.error.message, true);
-  if (deptR.error) return show(deptR.error.message, true);
-  if (subjR.error) return show(subjR.error.message, true);
+      setBusyProgress(null, "Loading dropdown data…");
 
-  students = await fetchAllStudents();
+      // Load validations + students
+      const [issueR, deptR, subjR] = await Promise.all([
+        sb.from("ticket_issue_raised_by").select("label,is_active").eq("is_active", true).order("sort_order").order("label"),
+        sb.from("ticket_departments").select("label,requires_subject,is_active").eq("is_active", true).order("sort_order").order("label"),
+        sb.from("ticket_subjects").select("label,is_active").eq("is_active", true).order("sort_order").order("label"),
+      ]);
 
-  // Build selects
-  tStudent.innerHTML =
-    `<option value=""></option>` +
-    students.map(s => `<option value="${s.child_name}">${s.child_name}</option>`).join("");
+      if (issueR.error) { show(issueR.error.message, true); return; }
+      if (deptR.error)  { show(deptR.error.message, true);  return; }
+      if (subjR.error)  { show(subjR.error.message, true);  return; }
 
-  tIssue.innerHTML =
-    `<option value=""></option>` +
-    (issueR.data || []).map(x => `<option value="${x.label}">${x.label}</option>`).join("");
+      setBusyProgress(null, "Loading students…");
+      students = await fetchAllStudents();
 
-  deptMeta = new Map((deptR.data || []).map(d => [d.label, !!d.requires_subject]));
-  tDept.innerHTML =
-    `<option value=""></option>` +
-    (deptR.data || []).map(x => `<option value="${x.label}">${x.label}</option>`).join("");
+      // Build selects
+      tStudent.innerHTML =
+        `<option value=""></option>` +
+        students.map(s => `<option value="${s.child_name}">${s.child_name}</option>`).join("");
 
-  tSubject.innerHTML =
-    `<option value=""></option>` +
-    (subjR.data || []).map(x => `<option value="${x.label}">${x.label}</option>`).join("");
+      tIssue.innerHTML =
+        `<option value=""></option>` +
+        (issueR.data || []).map(x => `<option value="${x.label}">${x.label}</option>`).join("");
 
-  tCategory.innerHTML = `<option value=""></option>`;
+      deptMeta = new Map((deptR.data || []).map(d => [d.label, !!d.requires_subject]));
+      tDept.innerHTML =
+        `<option value=""></option>` +
+        (deptR.data || []).map(x => `<option value="${x.label}">${x.label}</option>`).join("");
 
-  // Custom selects (search everywhere, especially student)
-  enhanceSelect(tStudent, { placeholder: "Select student...", search: true, searchThreshold: 0 });
-  enhanceSelect(tIssue, { placeholder: "Select...", search: true });
-  enhanceSelect(tDept, { placeholder: "Select...", search: true });
-  enhanceSelect(tSubject, { placeholder: "Select subject...", search: true });
-  enhanceSelect(tCategory, { placeholder: "Select category...", search: true });
+      tSubject.innerHTML =
+        `<option value=""></option>` +
+        (subjR.data || []).map(x => `<option value="${x.label}">${x.label}</option>`).join("");
 
-  applyConditionals();
-  await loadCategories();
-  hideMsg();
+      tCategory.innerHTML = `<option value=""></option>`;
+
+      // Custom selects (search everywhere, especially student)
+      enhanceSelect(tStudent, { placeholder: "Select student...", search: true, searchThreshold: 0 });
+      enhanceSelect(tIssue, { placeholder: "Select...", search: true });
+      enhanceSelect(tDept, { placeholder: "Select...", search: true });
+      enhanceSelect(tSubject, { placeholder: "Select subject...", search: true });
+      enhanceSelect(tCategory, { placeholder: "Select category...", search: true });
+
+      applyConditionals();
+
+      // DB task (if issue+dept selected)
+      await loadCategories();
+
+      hideMsg();
+    });
+  } catch (e) {
+    console.error(e);
+    show(e?.message || String(e), true);
+  }
 })();
 
 tDept.addEventListener("change", async () => {
   applyConditionals();
   await loadCategories();
 });
+
 tIssue.addEventListener("change", async () => {
   applyConditionals();
   await loadCategories();
@@ -179,8 +206,9 @@ tIssue.addEventListener("change", async () => {
 tReset.addEventListener("click", async () => {
   form.reset();
   applyConditionals();
-  await loadCategories();
+  await loadCategories(); // includes busy only if it hits DB
   hideMsg();
+
   refreshSelect(tStudent);
   refreshSelect(tIssue);
   refreshSelect(tDept);
@@ -192,81 +220,112 @@ form.addEventListener("submit", async (e) => {
   e.preventDefault();
   hideMsg();
 
-  const me = await getMe();
-  if (!me) return show("Not logged in.", true);
+  await withBusy("Creating ticket…", async () => {
+    setBusyProgress(null, "Checking login…");
 
-  const profile = await getMyProfile(me.id);
+    const me = await getMe();
+    if (!me) { show("Not logged in.", true); return; }
 
-  const child = tStudent.value;
-  const issue = tIssue.value;
-  const dept = tDept.value;
-  const category = tCategory.value;
-  const desc = (tDesc.value || "").trim();
+    setBusyProgress(null, "Loading your profile…");
+    await getMyProfile(me.id); // keep if you need later (even if unused now)
 
-  if (!child || !issue || !dept || !category || !desc) {
-    return show("Please fill Student, Issue Raised By, Department, Category and Description.", true);
-  }
+    const child = tStudent.value;
+    const issue = tIssue.value;
+    const dept = tDept.value;
+    const category = tCategory.value;
+    const desc = (tDesc.value || "").trim();
 
-  const requiresSubject = deptMeta.get(dept) === true;
-  const subject = (tSubject.value || "");
-  if (requiresSubject && !subject) return show("Please select Subject.", true);
+    if (!child || !issue || !dept || !category || !desc) {
+      show("Please fill Student, Issue Raised By, Department, Category and Description.", true);
+      return;
+    }
 
-  const s = students.find(x => x.child_name === child);
+    const requiresSubject = deptMeta.get(dept) === true;
+    const subject = (tSubject.value || "");
+    if (requiresSubject && !subject) {
+      show("Please select Subject.", true);
+      return;
+    }
 
-  // Auto POC + POR
-  let poc = me.email;
-  let por = "";
+    const s = students.find(x => x.child_name === child);
 
-  const pocR = await sb.from("ticket_poc_map").select("poc_email").eq("reporter_email", me.email).maybeSingle();
-  if (!pocR.error && pocR.data?.poc_email) poc = pocR.data.poc_email;
+    // Auto POC + POR
+    let poc = me.email;
+    let por = "";
 
-  const porR = await sb.from("ticket_por_map").select("por_email").eq("department", dept).maybeSingle();
-  if (!porR.error && porR.data?.por_email) por = porR.data.por_email;
+    setBusyProgress(null, "Resolving POC / POR…");
+    const pocR = await sb
+      .from("ticket_poc_map")
+      .select("poc_email")
+      .eq("reporter_email", me.email)
+      .maybeSingle();
 
-  const ticket_number = genTicketNumber();
+    if (!pocR.error && pocR.data?.poc_email) poc = pocR.data.poc_email;
 
-  const payload = {
-    ticket_number,
+    const porR = await sb
+      .from("ticket_por_map")
+      .select("por_email")
+      .eq("department", dept)
+      .maybeSingle();
 
-    student_child_name: child,
-    student_name: s?.student_name ?? "",
-    class_name: s?.class_name ?? "",
-    section: s?.section ?? "",
-    scholar_number: s?.sr_number ?? "",
+    if (!porR.error && porR.data?.por_email) por = porR.data.por_email;
 
-    issue_raised_by: issue,
-    department: dept,
-    subject: subject || null,
-    category,
-    description: desc,
+    // ✅ NEW: If POR not set for this department, use POC
+    if (!por) por = poc;
 
-    reporter_user_id: me.id,
-    reporter_email: me.email,
-    reporter_mobile: (tMobile.value || "").trim() || null,
+    const ticket_number = genTicketNumber();
 
-    date_of_incident: tIncDate.value || null,
-    time_of_incident: tIncTime.value || null,
-    incident_reported_by: (tIncBy.value || "").trim() || null,
-    location_of_incident: (tIncLoc.value || "").trim() || null,
+    const payload = {
+      ticket_number,
 
-    point_of_contact: poc || null,
-    point_of_resolution: por || null,
+      student_child_name: child,
+      student_name: s?.student_name ?? "",
+      class_name: s?.class_name ?? "",
+      section: s?.section ?? "",
+      scholar_number: s?.sr_number ?? "",
 
-    ticket_status: null
-  };
+      issue_raised_by: issue,
+      department: dept,
+      subject: subject || null,
+      category,
+      description: desc,
 
-  const { error } = await sb.from("tickets").insert(payload);
-  if (error) return show(error.message, true);
+      reporter_user_id: me.id,
+      reporter_email: me.email,
+      reporter_mobile: (tMobile.value || "").trim() || null,
 
-  show(`Ticket created ✅ ${ticket_number}`);
+      date_of_incident: tIncDate.value || null,
+      time_of_incident: tIncTime.value || null,
+      incident_reported_by: (tIncBy.value || "").trim() || null,
+      location_of_incident: (tIncLoc.value || "").trim() || null,
 
-  form.reset();
-  applyConditionals();
-  await loadCategories();
+      point_of_contact: poc || null,
+      point_of_resolution: por || null,
 
-  refreshSelect(tStudent);
-  refreshSelect(tIssue);
-  refreshSelect(tDept);
-  refreshSelect(tSubject);
-  refreshSelect(tCategory);
+      ticket_status: null,
+    };
+
+    setBusyProgress(null, "Saving ticket to DB…");
+    const { error } = await sb.from("tickets").insert(payload);
+    if (error) {
+      show(error.message, true);
+      return;
+    }
+
+    show(`Ticket created ✅ ${ticket_number}`);
+
+    // Reset UI (no DB)
+    form.reset();
+    applyConditionals();
+    await loadCategories(); // busy only if it hits DB
+
+    refreshSelect(tStudent);
+    refreshSelect(tIssue);
+    refreshSelect(tDept);
+    refreshSelect(tSubject);
+    refreshSelect(tCategory);
+  }).catch((err) => {
+    console.error(err);
+    show(err?.message || String(err), true);
+  });
 });
