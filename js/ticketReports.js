@@ -3,6 +3,7 @@ import { sb } from "./supabaseClient.js";
 import { mountNav } from "./nav.js";
 import { getMe, getMyProfile } from "./auth.js";
 import { enhanceSelect, refreshSelect } from "./customSelect.js";
+import { withBusy, showBusy, hideBusy, setBusyProgress } from "./busy.js";
 
 const deptFilter = document.getElementById("deptFilter");
 const repFilter = document.getElementById("repFilter");
@@ -104,7 +105,7 @@ async function loadFilters(){
     `<option value="">All</option>` +
     (dR.data || []).map(x => `<option value="${escAttr(x.label)}">${escHtml(x.label)}</option>`).join("");
 
-  // Reporters (distinct) - MUST page (you have 1600+ rows)
+  // Reporters (distinct) - MUST page
   let reporters = [];
   try {
     const rows = await fetchAllColumn("tickets", "reporter_email");
@@ -159,7 +160,6 @@ function buildBaseQuery({ includeCount=false } = {}){
   if (deptFilter.value) query = query.eq("department", deptFilter.value);
   if (repFilter.value) query = query.eq("reporter_email", repFilter.value);
 
-  // ownership filter (change_ownership)
   if (ownFilter.value) {
     if (ownFilter.value === "__unassigned__") query = query.is("change_ownership", null);
     else query = query.eq("change_ownership", ownFilter.value);
@@ -227,7 +227,6 @@ function makeUserSelectOptions(currentVal){
   const opts = [`<option value=""></option>`];
   const cur = currentVal ? String(currentVal) : "";
 
-  // if value exists but not in profiles, keep it visible
   if (cur && !USERS.some(u => u.email === cur)) {
     opts.push(`<option value="${escAttr(cur)}" selected>${escHtml(cur)}</option>`);
   }
@@ -256,11 +255,6 @@ function makeStatusSelectOptions(currentVal){
 
 function renderEditable(ticket, meEmail, isAdmin, derived){
   const canEdit = isAdmin || (ticket.point_of_contact === meEmail) || (ticket.point_of_resolution === meEmail);
-
-  const textInput = (name, val) => {
-    if (!canEdit) return `<div class="muted">${td(val)}</div>`;
-    return `<input class="cellEdit" type="text" data-ticket="${escAttr(ticket.ticket_number)}" data-field="${escAttr(name)}" value="${escAttr(val ?? "")}" />`;
-  };
 
   const textArea = (name, val) => {
     if (!canEdit) return `<div class="muted" style="white-space:pre-wrap;">${td(val)}</div>`;
@@ -294,114 +288,123 @@ async function loadPage(){
   hideMsg();
   rowsEl.innerHTML = `<tr><td colspan="24">Loading...</td></tr>`;
 
-  const from = page * PAGE_SIZE;
-  const to = from + PAGE_SIZE - 1;
+  return await withBusy("Loading Ticket Reports…", async () => {
+    const from = page * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
 
-  const { data, error, count } = await buildBaseQuery({ includeCount:true }).range(from, to);
-  if (error) {
-    rowsEl.innerHTML = `<tr><td colspan="24">${escHtml(error.message)}</td></tr>`;
-    return;
-  }
+    const { data, error, count } = await buildBaseQuery({ includeCount:true }).range(from, to);
+    if (error) {
+      rowsEl.innerHTML = `<tr><td colspan="24">${escHtml(error.message)}</td></tr>`;
+      return;
+    }
 
-  totalCount = count ?? 0;
-  meta.textContent = `Showing ${Math.min(from + 1, totalCount)}–${Math.min(to + 1, totalCount)} of ${totalCount}`;
-  pageInfo.textContent = `Page ${page + 1} / ${Math.max(1, Math.ceil(totalCount / PAGE_SIZE))}`;
+    totalCount = count ?? 0;
+    meta.textContent = `Showing ${Math.min(from + 1, totalCount)}–${Math.min(to + 1, totalCount)} of ${totalCount}`;
+    pageInfo.textContent = `Page ${page + 1} / ${Math.max(1, Math.ceil(totalCount / PAGE_SIZE))}`;
 
-  prevBtn.disabled = page <= 0;
-  nextBtn.disabled = (to + 1) >= totalCount;
+    prevBtn.disabled = page <= 0;
+    nextBtn.disabled = (to + 1) >= totalCount;
 
-  if (!data?.length){
-    rowsEl.innerHTML = `<tr><td colspan="24">No results.</td></tr>`;
-    return;
-  }
+    if (!data?.length){
+      rowsEl.innerHTML = `<tr><td colspan="24">No results.</td></tr>`;
+      return;
+    }
 
-  const me = await getMe();
-  const profile = me ? await getMyProfile(me.id) : null;
-  const meEmail = me?.email || "";
-  const isAdmin = profile?.role === "admin";
+    const me = await getMe();
+    const profile = me ? await getMyProfile(me.id) : null;
+    const meEmail = me?.email || "";
+    const isAdmin = profile?.role === "admin";
 
-  const ticketNumbers = data.map(x => x.ticket_number).filter(Boolean);
-  const derivedMap = await fetchDerivedForTickets(ticketNumbers);
+    setBusyProgress(null, "Loading linked touchpoints…");
+    const ticketNumbers = data.map(x => x.ticket_number).filter(Boolean);
+    const derivedMap = await fetchDerivedForTickets(ticketNumbers);
 
-  rowsEl.innerHTML = data.map(t => {
-    const d = derivedMap.get(t.ticket_number);
-    const e = renderEditable(t, meEmail, isAdmin, d);
+    rowsEl.innerHTML = data.map(t => {
+      const d = derivedMap.get(t.ticket_number);
+      const e = renderEditable(t, meEmail, isAdmin, d);
 
-    return `
-      <tr>
-        <td>${td(t.ticket_number)}</td>
-        <td>${td(t.student_child_name)}</td>
-        <td>${td(t.issue_raised_by)}</td>
-        <td>${td(t.department)}</td>
-        <td>${td(t.subject)}</td>
-        <td>${td(t.category)}</td>
-        <td style="max-width:420px; white-space:pre-wrap;">${td(t.description)}</td>
-        <td>${td(fmtDateTime(t.raised_at))}</td>
-        <td>${td(t.reporter_email)}</td>
-        <td>${td(t.reporter_mobile)}</td>
+      return `
+        <tr>
+          <td>${td(t.ticket_number)}</td>
+          <td>${td(t.student_child_name)}</td>
+          <td>${td(t.issue_raised_by)}</td>
+          <td>${td(t.department)}</td>
+          <td>${td(t.subject)}</td>
+          <td>${td(t.category)}</td>
+          <td style="max-width:420px; white-space:pre-wrap;">${td(t.description)}</td>
+          <td>${td(fmtDateTime(t.raised_at))}</td>
+          <td>${td(t.reporter_email)}</td>
+          <td>${td(t.reporter_mobile)}</td>
 
-        <td>${td(t.class_name)}</td>
-        <td>${td(t.section)}</td>
-        <td>${td(t.scholar_number)}</td>
+          <td>${td(t.class_name)}</td>
+          <td>${td(t.section)}</td>
+          <td>${td(t.scholar_number)}</td>
 
-        <td>${td(t.point_of_contact)}</td>
-        <td>${td(t.point_of_resolution)}</td>
+          <td>${td(t.point_of_contact)}</td>
+          <td>${td(t.point_of_resolution)}</td>
 
-        <td>${e.change_ownership}</td>
-        <td>${e.follow_up_action_count_remarks}</td>
-        <td>${e.next_follow_up_date}</td>
-        <td>${e.ticket_status}</td>
+          <td>${e.change_ownership}</td>
+          <td>${e.follow_up_action_count_remarks}</td>
+          <td>${e.next_follow_up_date}</td>
+          <td>${e.ticket_status}</td>
 
-        <td style="white-space:pre-wrap; max-width:420px;">${e.derivedAction}</td>
-        <td style="white-space:pre-wrap; max-width:420px;">${e.derivedParent}</td>
-        <td>${e.derivedActionWeek}</td>
-        <td>${e.derivedParentWeek}</td>
+          <td style="white-space:pre-wrap; max-width:420px;">${e.derivedAction}</td>
+          <td style="white-space:pre-wrap; max-width:420px;">${e.derivedParent}</td>
+          <td>${e.derivedActionWeek}</td>
+          <td>${e.derivedParentWeek}</td>
 
-        <td><button class="btn danger delBtn" data-ticket="${escAttr(t.ticket_number)}">Delete</button></td>
-      </tr>
-    `;
-  }).join("");
+          <td><button class="btn danger delBtn" data-ticket="${escAttr(t.ticket_number)}">Delete</button></td>
+        </tr>
+      `;
+    }).join("");
 
-  // text/textarea/date => update on blur
-  rowsEl.querySelectorAll("input.cellEdit, textarea.cellArea").forEach(inp => {
-    inp.addEventListener("blur", async () => {
-      const ticket_number = inp.dataset.ticket;
-      const field = inp.dataset.field;
-      const value = (inp.value ?? "").trim();
+    // textarea/date => update on blur
+    rowsEl.querySelectorAll("input.cellEdit, textarea.cellArea").forEach(inp => {
+      inp.addEventListener("blur", async () => {
+        const ticket_number = inp.dataset.ticket;
+        const field = inp.dataset.field;
+        const value = (inp.value ?? "").trim();
 
-      const patch = {};
-      patch[field] = value ? value : null;
+        const patch = {};
+        patch[field] = value ? value : null;
 
-      const { error } = await sb.from("tickets").update(patch).eq("ticket_number", ticket_number);
-      if (error) show(error.message, true);
+        await withBusy("Saving changes…", async () => {
+          const { error } = await sb.from("tickets").update(patch).eq("ticket_number", ticket_number);
+          if (error) show(error.message, true);
+        });
+      });
     });
-  });
 
-  // selects => update on change
-  rowsEl.querySelectorAll("select.cellSelect").forEach(sel => {
-    sel.addEventListener("change", async () => {
-      const ticket_number = sel.dataset.ticket;
-      const field = sel.dataset.field;
-      const value = (sel.value ?? "").trim();
+    // selects => update on change
+    rowsEl.querySelectorAll("select.cellSelect").forEach(sel => {
+      sel.addEventListener("change", async () => {
+        const ticket_number = sel.dataset.ticket;
+        const field = sel.dataset.field;
+        const value = (sel.value ?? "").trim();
 
-      const patch = {};
-      patch[field] = value ? value : null;
+        const patch = {};
+        patch[field] = value ? value : null;
 
-      const { error } = await sb.from("tickets").update(patch).eq("ticket_number", ticket_number);
-      if (error) show(error.message, true);
+        await withBusy("Saving changes…", async () => {
+          const { error } = await sb.from("tickets").update(patch).eq("ticket_number", ticket_number);
+          if (error) show(error.message, true);
+        });
+      });
     });
-  });
 
-  // delete
-  rowsEl.querySelectorAll(".delBtn").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      const ticket_number = btn.dataset.ticket;
-      if (!confirm(`Delete ticket ${ticket_number}?`)) return;
+    // delete
+    rowsEl.querySelectorAll(".delBtn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const ticket_number = btn.dataset.ticket;
+        if (!confirm(`Delete ticket ${ticket_number}?`)) return;
 
-      const { error } = await sb.from("tickets").delete().eq("ticket_number", ticket_number);
-      if (error) return show(error.message, true);
+        await withBusy("Deleting ticket…", async () => {
+          const { error } = await sb.from("tickets").delete().eq("ticket_number", ticket_number);
+          if (error) return show(error.message, true);
+        });
 
-      await loadPage();
+        await loadPage();
+      });
     });
   });
 }
@@ -420,7 +423,6 @@ const EXPORT_HEADERS = [
 ];
 
 function getTicketVal(t, header, derived){
-  // formula columns must be empty
   if (header.startsWith("Ticket Action Comments (filled by formula")) return "";
   if (header.startsWith("Ticket Parent Updates (filled by formula")) return "";
 
@@ -468,48 +470,64 @@ function getTicketVal(t, header, derived){
     case "#Ticket Actions this week": return derived?.actionWeek ?? 0;
     case "#Ticket Parent Updates this week": return derived?.parentWeek ?? 0;
     default:
-      // if your DB has the exact snake_case column name, this will still pick it:
-      return t?.[header] ?? "";
+      return "";
   }
 }
 
 async function exportAllFiltered(){
   hideMsg();
-  show("Preparing export…");
 
-  const all = [];
-  let offset = 0;
-  const chunk = 1000;
+  return await withBusy("Exporting report…", async () => {
+    // get count (for progress)
+    setBusyProgress(null, "Counting rows…");
+    const head = await buildBaseQuery({ includeCount:true }).range(0, 0);
+    const total = head?.count ?? 0;
 
-  while (true) {
-    const { data, error } = await buildBaseQuery().range(offset, offset + chunk - 1);
-    if (error) return show(error.message, true);
-    if (!data?.length) break;
-    all.push(...data);
-    offset += data.length;
-    if (data.length < chunk) break;
-  }
+    const all = [];
+    let offset = 0;
+    const chunk = 1000;
 
-  if (!all.length) return show("No rows to export.", true);
+    while (true) {
+      const pct = total ? (offset / total) * 100 : null;
+      setBusyProgress(pct, `Downloading rows… (${offset}/${total || "?"})`);
 
-  // we only need derived for weekly counts
-  const derivedMap = await fetchDerivedForTickets(all.map(x => x.ticket_number).filter(Boolean));
+      const { data, error } = await buildBaseQuery().range(offset, offset + chunk - 1);
+      if (error) {
+        show(error.message, true);
+        return;
+      }
+      if (!data?.length) break;
 
-  const rows = all.map(t => {
-    const d = derivedMap.get(t.ticket_number) || { actionWeek: 0, parentWeek: 0 };
+      all.push(...data);
+      offset += data.length;
+      if (data.length < chunk) break;
+    }
 
-    const obj = {};
-    for (const h of EXPORT_HEADERS) obj[h] = getTicketVal(t, h, d);
-    return obj;
+    if (!all.length) {
+      show("No rows to export.", true);
+      return;
+    }
+
+    setBusyProgress(null, "Computing weekly counts…");
+    const derivedMap = await fetchDerivedForTickets(all.map(x => x.ticket_number).filter(Boolean));
+
+    setBusyProgress(null, "Building Excel…");
+    const rows = all.map(t => {
+      const d = derivedMap.get(t.ticket_number) || { actionWeek: 0, parentWeek: 0 };
+      const obj = {};
+      for (const h of EXPORT_HEADERS) obj[h] = getTicketVal(t, h, d);
+      return obj;
+    });
+
+    const ws = window.XLSX.utils.json_to_sheet(rows, { header: EXPORT_HEADERS });
+    const wb = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(wb, ws, "Tickets");
+
+    const name = `Ticket_Report_${new Date().toISOString().slice(0,10)}.xlsx`;
+    window.XLSX.writeFile(wb, name);
+
+    show(`Exported ${rows.length} rows ✅`);
   });
-
-  const ws = window.XLSX.utils.json_to_sheet(rows, { header: EXPORT_HEADERS });
-  const wb = window.XLSX.utils.book_new();
-  window.XLSX.utils.book_append_sheet(wb, ws, "Tickets");
-
-  const name = `Ticket_Report_${new Date().toISOString().slice(0,10)}.xlsx`;
-  window.XLSX.writeFile(wb, name);
-  show(`Exported ${rows.length} rows ✅`);
 }
 
 function setDefaultRangeLast7Days(){
@@ -525,7 +543,11 @@ function setDefaultRangeLast7Days(){
 
 (async () => {
   await mountNav("ticket-reports");
-  await loadFilters();
+
+  await withBusy("Loading filters…", async () => {
+    await loadFilters();
+  });
+
   setDefaultRangeLast7Days();
   await loadPage();
 })();
