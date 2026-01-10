@@ -1,13 +1,12 @@
 // js/ticketReports.js
 import { sb } from "./supabaseClient.js";
 import { mountNav } from "./nav.js";
-import { getMe } from "./auth.js";
+import { getMe, getMyProfile } from "./auth.js";
 import { enhanceSelect, refreshSelect } from "./customSelect.js";
 
 const deptFilter = document.getElementById("deptFilter");
 const repFilter = document.getElementById("repFilter");
-const ownerFilter = document.getElementById("ownerFilter"); // ✅ NEW
-
+const ownFilter = document.getElementById("ownFilter");
 const fromDate = document.getElementById("fromDate");
 const toDate = document.getElementById("toDate");
 const q = document.getElementById("q");
@@ -28,11 +27,9 @@ const PAGE_SIZE = 50;
 let page = 0;
 let totalCount = 0;
 
-// ✅ cached dropdown sources
-let USERS = [];          // from profiles
-let STATUSES = [];       // from ticket_statuses (labels)
-let USERS_BY_EMAIL = new Map();
-let USERS_BY_NAME = new Map();
+// dropdown sources
+let USERS = [];    // [{email, display_name}]
+let STATUSES = []; // [{label}]
 
 function show(text, isError=false){
   msg.style.display = "block";
@@ -41,15 +38,16 @@ function show(text, isError=false){
 }
 function hideMsg(){ msg.style.display = "none"; }
 
-function escapeHtml(str) {
-  return String(str ?? "")
+function escHtml(v){
+  return String(v ?? "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
-function td(v){ return escapeHtml((v ?? "").toString()); }
+function escAttr(v){ return escHtml(v).replaceAll('"', "&quot;"); }
+function td(v){ return escHtml((v ?? "").toString()); }
 
 function pad(n){ return String(n).padStart(2,"0"); }
 function fmtDateTime(iso){
@@ -76,27 +74,27 @@ function isoWeekNumber(dateObj) {
   return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
 }
 
-function userLabelByEmail(email){
-  if (!email) return "";
-  const u = USERS_BY_EMAIL.get(email);
-  if (!u) return email;
-  const n = u.display_name || "";
-  return n ? `${n} (${email})` : email;
-}
-
-function resolveOwnershipValue(raw){
-  const v = (raw || "").trim();
-  if (!v) return "";
-  if (USERS_BY_EMAIL.has(v)) return v; // already email
-  if (USERS_BY_NAME.has(v)) return USERS_BY_NAME.get(v).email; // legacy name -> email
-  return v; // unknown legacy value
+async function fetchAllColumn(table, col){
+  const out = [];
+  const chunk = 1000;
+  let offset = 0;
+  while (true){
+    const { data, error } = await sb.from(table).select(col).range(offset, offset + chunk - 1);
+    if (error) throw error;
+    if (!data?.length) break;
+    out.push(...data);
+    offset += data.length;
+    if (data.length < chunk) break;
+  }
+  return out;
 }
 
 async function loadFilters(){
+  hideMsg();
+
   // Departments
-  const dR = await sb
-    .from("ticket_departments")
-    .select("label")
+  const dR = await sb.from("ticket_departments")
+    .select("label,is_active,sort_order")
     .eq("is_active", true)
     .order("sort_order")
     .order("label");
@@ -104,49 +102,52 @@ async function loadFilters(){
 
   deptFilter.innerHTML =
     `<option value="">All</option>` +
-    (dR.data || []).map(x => `<option value="${escapeHtml(x.label)}">${escapeHtml(x.label)}</option>`).join("");
+    (dR.data || []).map(x => `<option value="${escAttr(x.label)}">${escHtml(x.label)}</option>`).join("");
 
-  // Reporters (distinct)
-  const rR = await sb.from("tickets").select("reporter_email").order("reporter_email");
-  if (rR.error) return show(rR.error.message, true);
-  const uniq = Array.from(new Set((rR.data || []).map(x => x.reporter_email).filter(Boolean)));
+  // Reporters (distinct) - MUST page (you have 1600+ rows)
+  let reporters = [];
+  try {
+    const rows = await fetchAllColumn("tickets", "reporter_email");
+    reporters = rows.map(r => r.reporter_email).filter(Boolean);
+  } catch (e) {
+    return show(e.message || String(e), true);
+  }
+  const uniqReporters = Array.from(new Set(reporters)).sort((a,b) => String(a).localeCompare(String(b)));
 
   repFilter.innerHTML =
     `<option value="">All</option>` +
-    uniq.map(x => `<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join("");
+    uniqReporters.map(x => `<option value="${escAttr(x)}">${escHtml(x)}</option>`).join("");
 
-  // ✅ Users for Change Ownership dropdown + Ownership filter
-  const uR = await sb
-    .from("profiles")
-    .select("email, display_name, role")
-    .order("display_name");
+  // Ownership users (profiles)
+  const uR = await sb.from("profiles").select("email,display_name,role").order("display_name");
   if (uR.error) return show(uR.error.message, true);
 
-  USERS = (uR.data || []).filter(u => u.email);
-  USERS_BY_EMAIL = new Map(USERS.map(u => [u.email, u]));
-  USERS_BY_NAME = new Map(USERS.map(u => [u.display_name || "", u]).filter(([k]) => !!k));
+  USERS = (uR.data || [])
+    .filter(u => u?.email)
+    .map(u => ({ email: String(u.email), display_name: String(u.display_name || u.email) }));
 
-  ownerFilter.innerHTML =
-    `<option value="">All</option>` +
-    USERS.map(u => {
-      const label = u.display_name ? `${u.display_name} (${u.email})` : u.email;
-      return `<option value="${escapeHtml(u.email)}">${escapeHtml(label)}</option>`;
-    }).join("");
+  ownFilter.innerHTML =
+    `<option value="">All</option>
+     <option value="__unassigned__">Unassigned</option>` +
+    USERS.map(u => `<option value="${escAttr(u.email)}">${escHtml(u.display_name)}</option>`).join("");
 
-  // ✅ Ticket Status dropdown values from DB (admin editable)
-  const sR = await sb
-    .from("ticket_statuses")
-    .select("label")
+  // Ticket Statuses (DB)
+  const sR = await sb.from("ticket_statuses")
+    .select("label,is_active,sort_order")
     .eq("is_active", true)
     .order("sort_order")
     .order("label");
   if (sR.error) return show(sR.error.message, true);
 
-  STATUSES = (sR.data || []).map(x => x.label).filter(Boolean);
+  STATUSES = (sR.data || []).map(x => ({ label: x.label }));
 
   enhanceSelect(deptFilter, { placeholder: "All", search: true });
   enhanceSelect(repFilter, { placeholder: "All", search: true });
-  enhanceSelect(ownerFilter, { placeholder: "All", search: true }); // ✅ NEW
+  enhanceSelect(ownFilter, { placeholder: "All", search: true });
+
+  refreshSelect(deptFilter);
+  refreshSelect(repFilter);
+  refreshSelect(ownFilter);
 }
 
 function buildBaseQuery({ includeCount=false } = {}){
@@ -158,8 +159,11 @@ function buildBaseQuery({ includeCount=false } = {}){
   if (deptFilter.value) query = query.eq("department", deptFilter.value);
   if (repFilter.value) query = query.eq("reporter_email", repFilter.value);
 
-  // ✅ Ownership filter
-  if (ownerFilter.value) query = query.eq("change_ownership", ownerFilter.value);
+  // ownership filter (change_ownership)
+  if (ownFilter.value) {
+    if (ownFilter.value === "__unassigned__") query = query.is("change_ownership", null);
+    else query = query.eq("change_ownership", ownFilter.value);
+  }
 
   const start = toStartISO(fromDate.value);
   const end = toEndISO(toDate.value);
@@ -200,16 +204,13 @@ async function fetchDerivedForTickets(ticketNumbers){
   const map = new Map();
   for (const r of (data || [])) {
     const k = r.ticket_number;
-    if (!map.has(k)) {
-      map.set(k, { action: [], parent: [], actionWeek: 0, parentWeek: 0 });
-    }
-    const obj = r.objective;
-    const rec = map.get(k);
+    if (!map.has(k)) map.set(k, { action: [], parent: [], actionWeek: 0, parentWeek: 0 });
 
-    if (obj === "Ticket: Action") {
+    const rec = map.get(k);
+    if (r.objective === "Ticket: Action") {
       if (r.comments_concat) rec.action.push(String(r.comments_concat));
       if (Number(r.week) === curWeek && Number(r.year) === curYear) rec.actionWeek++;
-    } else if (obj === "Ticket: Parent Update") {
+    } else if (r.objective === "Ticket: Parent Update") {
       if (r.comments_concat) rec.parent.push(String(r.comments_concat));
       if (Number(r.week) === curWeek && Number(r.year) === curYear) rec.parentWeek++;
     }
@@ -219,98 +220,74 @@ async function fetchDerivedForTickets(ticketNumbers){
     v.actionText = v.action.join("\n");
     v.parentText = v.parent.join("\n");
   }
-
   return map;
+}
+
+function makeUserSelectOptions(currentVal){
+  const opts = [`<option value=""></option>`];
+  const cur = currentVal ? String(currentVal) : "";
+
+  // if value exists but not in profiles, keep it visible
+  if (cur && !USERS.some(u => u.email === cur)) {
+    opts.push(`<option value="${escAttr(cur)}" selected>${escHtml(cur)}</option>`);
+  }
+
+  for (const u of USERS){
+    const sel = u.email === cur ? "selected" : "";
+    opts.push(`<option value="${escAttr(u.email)}" ${sel}>${escHtml(u.display_name)}</option>`);
+  }
+  return opts.join("");
+}
+
+function makeStatusSelectOptions(currentVal){
+  const opts = [`<option value=""></option>`];
+  const cur = currentVal ? String(currentVal) : "";
+
+  if (cur && !STATUSES.some(s => s.label === cur)) {
+    opts.push(`<option value="${escAttr(cur)}" selected>${escHtml(cur)}</option>`);
+  }
+
+  for (const s of STATUSES){
+    const sel = s.label === cur ? "selected" : "";
+    opts.push(`<option value="${escAttr(s.label)}" ${sel}>${escHtml(s.label)}</option>`);
+  }
+  return opts.join("");
 }
 
 function renderEditable(ticket, meEmail, isAdmin, derived){
   const canEdit = isAdmin || (ticket.point_of_contact === meEmail) || (ticket.point_of_resolution === meEmail);
 
-  const textField = (name, val, type="text") => {
+  const textInput = (name, val) => {
     if (!canEdit) return `<div class="muted">${td(val)}</div>`;
-    if (type === "date") {
-      return `<input class="cellEdit" type="date" data-ticket="${escapeHtml(ticket.ticket_number)}" data-field="${escapeHtml(name)}" value="${escapeHtml(val || "")}" />`;
-    }
-    return `<input class="cellEdit" type="text" data-ticket="${escapeHtml(ticket.ticket_number)}" data-field="${escapeHtml(name)}" value="${escapeHtml(val ?? "")}" />`;
+    return `<input class="cellEdit" type="text" data-ticket="${escAttr(ticket.ticket_number)}" data-field="${escAttr(name)}" value="${escAttr(val ?? "")}" />`;
   };
 
-  // ✅ Change Ownership dropdown (users from profiles)
-  const ownershipField = () => {
-    const raw = (ticket.change_ownership || "").trim();
-    const selected = resolveOwnershipValue(raw);
-
-    if (!canEdit) {
-      // show nice label if it is an email
-      if (USERS_BY_EMAIL.has(raw)) return `<div class="muted">${td(userLabelByEmail(raw))}</div>`;
-      return `<div class="muted">${td(raw)}</div>`;
-    }
-
-    let opts = `<option value="">—</option>`;
-
-    // keep legacy value visible if it's not in list
-    if (raw && !USERS_BY_EMAIL.has(selected)) {
-      opts += `<option value="${escapeHtml(raw)}" selected>${escapeHtml(raw)} (legacy)</option>`;
-    }
-
-    opts += USERS.map(u => {
-      const label = u.display_name ? `${u.display_name} (${u.email})` : u.email;
-      const sel = u.email === selected ? "selected" : "";
-      return `<option value="${escapeHtml(u.email)}" ${sel}>${escapeHtml(label)}</option>`;
-    }).join("");
-
-    return `
-      <select class="cellSelect"
-        data-ticket="${escapeHtml(ticket.ticket_number)}"
-        data-field="change_ownership">
-        ${opts}
-      </select>
-    `;
+  const textArea = (name, val) => {
+    if (!canEdit) return `<div class="muted" style="white-space:pre-wrap;">${td(val)}</div>`;
+    return `<textarea class="cellArea" data-ticket="${escAttr(ticket.ticket_number)}" data-field="${escAttr(name)}">${escHtml(val ?? "")}</textarea>`;
   };
 
-  // ✅ Ticket Status dropdown (from ticket_statuses)
-  const statusField = () => {
-    const cur = (ticket.ticket_status || "").trim();
+  const dateInput = (name, val) => {
+    if (!canEdit) return `<div class="muted">${td(val)}</div>`;
+    return `<input class="cellEdit" type="date" data-ticket="${escAttr(ticket.ticket_number)}" data-field="${escAttr(name)}" value="${escAttr(val || "")}" />`;
+  };
 
-    if (!canEdit) return `<div class="muted">${td(cur)}</div>`;
-
-    let opts = `<option value="">—</option>`;
-
-    // keep current value visible even if admin deactivated it
-    if (cur && !STATUSES.includes(cur)) {
-      opts += `<option value="${escapeHtml(cur)}" selected>${escapeHtml(cur)} (legacy)</option>`;
-    }
-
-    opts += STATUSES.map(s => {
-      const sel = s === cur ? "selected" : "";
-      return `<option value="${escapeHtml(s)}" ${sel}>${escapeHtml(s)}</option>`;
-    }).join("");
-
-    return `
-      <select class="cellSelect"
-        data-ticket="${escapeHtml(ticket.ticket_number)}"
-        data-field="ticket_status">
-        ${opts}
-      </select>
-    `;
+  const selectInput = (name, optionsHtml, currentVal) => {
+    if (!canEdit) return `<div class="muted">${td(currentVal)}</div>`;
+    return `<select class="cellSelect" data-ticket="${escAttr(ticket.ticket_number)}" data-field="${escAttr(name)}">${optionsHtml}</select>`;
   };
 
   return {
-    change_ownership: ownershipField(),
-    follow_up_action_count_remarks: textField("follow_up_action_count_remarks", ticket.follow_up_action_count_remarks),
-    next_follow_up_date: textField("next_follow_up_date", ticket.next_follow_up_date, "date"),
-    ticket_status: statusField(),
+    change_ownership: selectInput("change_ownership", makeUserSelectOptions(ticket.change_ownership), ticket.change_ownership),
+    follow_up_action_count_remarks: textArea("follow_up_action_count_remarks", ticket.follow_up_action_count_remarks),
+    next_follow_up_date: dateInput("next_follow_up_date", ticket.next_follow_up_date),
+    ticket_status: selectInput("ticket_status", makeStatusSelectOptions(ticket.ticket_status), ticket.ticket_status),
+
     derivedAction: td(derived?.actionText || ""),
     derivedParent: td(derived?.parentText || ""),
     derivedActionWeek: td(derived?.actionWeek ?? 0),
     derivedParentWeek: td(derived?.parentWeek ?? 0),
   };
-}
-
-async function getIsAdmin(meEmail){
-  if (!meEmail) return false;
-  const { data, error } = await sb.from("profiles").select("role").eq("email", meEmail).maybeSingle();
-  if (error) return false;
-  return (data?.role || "") === "admin";
 }
 
 async function loadPage(){
@@ -322,7 +299,7 @@ async function loadPage(){
 
   const { data, error, count } = await buildBaseQuery({ includeCount:true }).range(from, to);
   if (error) {
-    rowsEl.innerHTML = `<tr><td colspan="24">${escapeHtml(error.message)}</td></tr>`;
+    rowsEl.innerHTML = `<tr><td colspan="24">${escHtml(error.message)}</td></tr>`;
     return;
   }
 
@@ -339,10 +316,11 @@ async function loadPage(){
   }
 
   const me = await getMe();
+  const profile = me ? await getMyProfile(me.id) : null;
   const meEmail = me?.email || "";
-  const isAdmin = await getIsAdmin(meEmail);
+  const isAdmin = profile?.role === "admin";
 
-  const ticketNumbers = data.map(x => x.ticket_number);
+  const ticketNumbers = data.map(x => x.ticket_number).filter(Boolean);
   const derivedMap = await fetchDerivedForTickets(ticketNumbers);
 
   rowsEl.innerHTML = data.map(t => {
@@ -358,7 +336,7 @@ async function loadPage(){
         <td>${td(t.subject)}</td>
         <td>${td(t.category)}</td>
         <td style="max-width:420px; white-space:pre-wrap;">${td(t.description)}</td>
-        <td>${escapeHtml(fmtDateTime(t.raised_at))}</td>
+        <td>${td(fmtDateTime(t.raised_at))}</td>
         <td>${td(t.reporter_email)}</td>
         <td>${td(t.reporter_mobile)}</td>
 
@@ -379,36 +357,35 @@ async function loadPage(){
         <td>${e.derivedActionWeek}</td>
         <td>${e.derivedParentWeek}</td>
 
-        <td><button class="btn danger delBtn" data-ticket="${escapeHtml(t.ticket_number)}">Delete</button></td>
+        <td><button class="btn danger delBtn" data-ticket="${escAttr(t.ticket_number)}">Delete</button></td>
       </tr>
     `;
   }).join("");
 
-  // ✅ inline edit:
-  // - inputs/datepicker: blur
-  rowsEl.querySelectorAll("input.cellEdit").forEach(inp => {
+  // text/textarea/date => update on blur
+  rowsEl.querySelectorAll("input.cellEdit, textarea.cellArea").forEach(inp => {
     inp.addEventListener("blur", async () => {
       const ticket_number = inp.dataset.ticket;
       const field = inp.dataset.field;
-      const value = inp.value;
+      const value = (inp.value ?? "").trim();
 
       const patch = {};
-      patch[field] = value || null;
+      patch[field] = value ? value : null;
 
       const { error } = await sb.from("tickets").update(patch).eq("ticket_number", ticket_number);
       if (error) show(error.message, true);
     });
   });
 
-  // - selects: change
+  // selects => update on change
   rowsEl.querySelectorAll("select.cellSelect").forEach(sel => {
     sel.addEventListener("change", async () => {
       const ticket_number = sel.dataset.ticket;
       const field = sel.dataset.field;
-      const value = sel.value;
+      const value = (sel.value ?? "").trim();
 
       const patch = {};
-      patch[field] = value || null;
+      patch[field] = value ? value : null;
 
       const { error } = await sb.from("tickets").update(patch).eq("ticket_number", ticket_number);
       if (error) show(error.message, true);
@@ -429,66 +406,77 @@ async function loadPage(){
   });
 }
 
-async function exportAllFiltered() {
+const EXPORT_HEADERS = [
+  "Ticket Number","Student Name","Issue Raised By","Department","Subject","Category","Description","Date","Reporter","Mobile Number",
+  "Date Of Incident","Time Of Incident","Incident Reported By","Location Of Incident","Class","Section","Scholar Number","Segment",
+  "Point Of Contact","Point Of Resolution","Keep In Loop","Change Ownership",
+  "Follow-Up/Action Dates","Follow-Up/Action Type","Follow-Up/Action Count And Remarks","Next Follow Up Date",
+  "Psych Counseling Status","Card Status","Punishment Execution Remark","Ticket Status","Parent Notified On Conclusion",
+  "POC Follow Up Dates","POC Follow Up Remarks","Resolution Date","Auditor Email","Audit Date","Audit Score","Audit Categories",
+  "Audit Remarks","Comments by POR",
+  "Ticket Action Comments (filled by formula, don't enter anything in this column)",
+  "Ticket Parent Updates (filled by formula, don't enter anything in this column)",
+  "#Ticket Actions this week","#Ticket Parent Updates this week"
+];
+
+function getTicketVal(t, header, derived){
+  // formula columns must be empty
+  if (header.startsWith("Ticket Action Comments (filled by formula")) return "";
+  if (header.startsWith("Ticket Parent Updates (filled by formula")) return "";
+
+  switch (header) {
+    case "Ticket Number": return t.ticket_number ?? "";
+    case "Student Name": return t.student_child_name ?? "";
+    case "Issue Raised By": return t.issue_raised_by ?? "";
+    case "Department": return t.department ?? "";
+    case "Subject": return t.subject ?? "";
+    case "Category": return t.category ?? "";
+    case "Description": return t.description ?? "";
+    case "Date": return fmtDateTime(t.raised_at) ?? "";
+    case "Reporter": return t.reporter_email ?? "";
+    case "Mobile Number": return (t.reporter_mobile ?? "").toString();
+    case "Date Of Incident": return t.date_of_incident ?? "";
+    case "Time Of Incident": return t.time_of_incident ?? "";
+    case "Incident Reported By": return t.incident_reported_by ?? "";
+    case "Location Of Incident": return t.location_of_incident ?? "";
+    case "Class": return t.class_name ?? "";
+    case "Section": return t.section ?? "";
+    case "Scholar Number": return t.scholar_number ?? "";
+    case "Segment": return t.segment ?? "";
+    case "Point Of Contact": return t.point_of_contact ?? "";
+    case "Point Of Resolution": return t.point_of_resolution ?? "";
+    case "Keep In Loop": return t.keep_in_loop ?? "";
+    case "Change Ownership": return t.change_ownership ?? "";
+    case "Follow-Up/Action Dates": return t.follow_up_action_dates ?? "";
+    case "Follow-Up/Action Type": return t.follow_up_action_type ?? "";
+    case "Follow-Up/Action Count And Remarks": return t.follow_up_action_count_remarks ?? "";
+    case "Next Follow Up Date": return t.next_follow_up_date ?? "";
+    case "Psych Counseling Status": return t.psych_counseling_status ?? "";
+    case "Card Status": return t.card_status ?? "";
+    case "Punishment Execution Remark": return t.punishment_execution_remark ?? "";
+    case "Ticket Status": return t.ticket_status ?? "";
+    case "Parent Notified On Conclusion": return t.parent_notified_on_conclusion ?? "";
+    case "POC Follow Up Dates": return t.poc_follow_up_dates ?? "";
+    case "POC Follow Up Remarks": return t.poc_follow_up_remarks ?? "";
+    case "Resolution Date": return t.resolution_date ?? "";
+    case "Auditor Email": return t.auditor_email ?? "";
+    case "Audit Date": return t.audit_date ?? "";
+    case "Audit Score": return t.audit_score ?? "";
+    case "Audit Categories": return t.audit_categories ?? "";
+    case "Audit Remarks": return t.audit_remarks ?? "";
+    case "Comments by POR": return t.comments_by_por ?? "";
+    case "#Ticket Actions this week": return derived?.actionWeek ?? 0;
+    case "#Ticket Parent Updates this week": return derived?.parentWeek ?? 0;
+    default:
+      // if your DB has the exact snake_case column name, this will still pick it:
+      return t?.[header] ?? "";
+  }
+}
+
+async function exportAllFiltered(){
   hideMsg();
   show("Preparing export…");
 
-  const headers = [
-    "Ticket Number",
-    "Student Name",
-    "Issue Raised By",
-    "Department",
-    "Subject",
-    "Category",
-    "Description",
-    "Date",
-    "Reporter",
-    "Mobile Number",
-    "Date Of Incident",
-    "Time Of Incident",
-    "Incident Reported By",
-    "Location Of Incident",
-    "Class",
-    "Section",
-    "Scholar Number",
-    "Segment",
-    "Point Of Contact",
-    "Point Of Resolution",
-    "Keep In Loop",
-    "Change Ownership",
-    "Follow-Up/Action Dates",
-    "Follow-Up/Action Type",
-    "Follow-Up/Action Count And Remarks",
-    "Next Follow Up Date",
-    "Psych Counseling Status",
-    "Card Status",
-    "Punishment Execution Remark",
-    "Ticket Status",
-    "Parent Notified On Conclusion",
-    "POC Follow Up Dates",
-    "POC Follow Up Remarks",
-    "Resolution Date",
-    "Auditor Email",
-    "Audit Date",
-    "Audit Score",
-    "Audit Categories",
-    "Audit Remarks",
-    "Comments by POR",
-    "Ticket Action Comments (filled by formula, don't enter anything in this column)",
-    "Ticket Parent Updates (filled by formula, don't enter anything in this column)",
-    "#Ticket Actions this week",
-    "#Ticket Parent Updates this week",
-  ];
-
-  const pick = (obj, keys) => {
-    for (const k of keys) {
-      if (obj && obj[k] !== undefined && obj[k] !== null) return obj[k];
-    }
-    return "";
-  };
-  const td2 = (v) => (v ?? "").toString();
-
-  // Fetch all rows (paged)
   const all = [];
   let offset = 0;
   const chunk = 1000;
@@ -504,92 +492,24 @@ async function exportAllFiltered() {
 
   if (!all.length) return show("No rows to export.", true);
 
-  // Weekly counts from touchpoints
-  const derived = await fetchDerivedForTickets(all.map(x => x.ticket_number));
+  // we only need derived for weekly counts
+  const derivedMap = await fetchDerivedForTickets(all.map(x => x.ticket_number).filter(Boolean));
 
-  // Build AOA (Array-of-Arrays) with fixed headers => ALWAYS exports all columns
-  const aoa = [headers];
+  const rows = all.map(t => {
+    const d = derivedMap.get(t.ticket_number) || { actionWeek: 0, parentWeek: 0 };
 
-  for (const t of all) {
-    const d = derived.get(t.ticket_number) || { actionWeek: 0, parentWeek: 0 };
+    const obj = {};
+    for (const h of EXPORT_HEADERS) obj[h] = getTicketVal(t, h, d);
+    return obj;
+  });
 
-    const auditCatsVal = pick(t, ["audit_categories"]);
-    const auditCats =
-      Array.isArray(auditCatsVal) ? auditCatsVal.join(", ")
-      : (typeof auditCatsVal === "object" && auditCatsVal) ? JSON.stringify(auditCatsVal)
-      : td2(auditCatsVal);
-
-    const rowObj = {
-      "Ticket Number": td2(pick(t, ["ticket_number"])),
-      "Student Name": td2(pick(t, ["student_child_name", "student_name"])),
-      "Issue Raised By": td2(pick(t, ["issue_raised_by"])),
-      "Department": td2(pick(t, ["department"])),
-      "Subject": td2(pick(t, ["subject"])),
-      "Category": td2(pick(t, ["category"])),
-      "Description": td2(pick(t, ["description"])),
-      "Date": fmtDateTime(pick(t, ["raised_at"])),
-      "Reporter": td2(pick(t, ["reporter_email"])),
-      "Mobile Number": td2(pick(t, ["reporter_mobile"])),
-
-      "Date Of Incident": td2(pick(t, ["date_of_incident"])),
-      "Time Of Incident": td2(pick(t, ["time_of_incident"])),
-      "Incident Reported By": td2(pick(t, ["incident_reported_by"])),
-      "Location Of Incident": td2(pick(t, ["location_of_incident"])),
-
-      "Class": td2(pick(t, ["class_name"])),
-      "Section": td2(pick(t, ["section"])),
-      "Scholar Number": td2(pick(t, ["scholar_number", "sr_number"])),
-      "Segment": td2(pick(t, ["segment"])),
-
-      "Point Of Contact": td2(pick(t, ["point_of_contact"])),
-      "Point Of Resolution": td2(pick(t, ["point_of_resolution"])),
-      "Keep In Loop": td2(pick(t, ["keep_in_loop"])),
-
-      "Change Ownership": td2(pick(t, ["change_ownership"])),
-
-      "Follow-Up/Action Dates": td2(pick(t, ["follow_up_action_dates", "follow_up_dates"])),
-      "Follow-Up/Action Type": td2(pick(t, ["follow_up_action_type", "follow_up_type"])),
-      "Follow-Up/Action Count And Remarks": td2(pick(t, ["follow_up_action_count_remarks"])),
-      "Next Follow Up Date": td2(pick(t, ["next_follow_up_date"])),
-
-      "Psych Counseling Status": td2(pick(t, ["psych_counseling_status", "psychological_counseling_status"])),
-      "Card Status": td2(pick(t, ["card_status"])),
-      "Punishment Execution Remark": td2(pick(t, ["punishment_execution_remark"])),
-      "Ticket Status": td2(pick(t, ["ticket_status"])),
-
-      "Parent Notified On Conclusion": td2(pick(t, ["parent_notified_on_conclusion"])),
-
-      "POC Follow Up Dates": td2(pick(t, ["poc_follow_up_dates"])),
-      "POC Follow Up Remarks": td2(pick(t, ["poc_follow_up_remarks"])),
-
-      "Resolution Date": td2(pick(t, ["resolution_date"])),
-
-      "Auditor Email": td2(pick(t, ["auditor_email"])),
-      "Audit Date": td2(pick(t, ["audit_date"])),
-      "Audit Score": td2(pick(t, ["audit_score"])),
-      "Audit Categories": auditCats,
-      "Audit Remarks": td2(pick(t, ["audit_remarks"])),
-      "Comments by POR": td2(pick(t, ["comments_by_por", "por_comments"])),
-
-      // you asked these should be blank
-      "Ticket Action Comments (filled by formula, don't enter anything in this column)": "",
-      "Ticket Parent Updates (filled by formula, don't enter anything in this column)": "",
-
-      "#Ticket Actions this week": td2(d.actionWeek ?? 0),
-      "#Ticket Parent Updates this week": td2(d.parentWeek ?? 0),
-    };
-
-    aoa.push(headers.map(h => rowObj[h] ?? ""));
-  }
-
-  const ws = window.XLSX.utils.aoa_to_sheet(aoa);
+  const ws = window.XLSX.utils.json_to_sheet(rows, { header: EXPORT_HEADERS });
   const wb = window.XLSX.utils.book_new();
   window.XLSX.utils.book_append_sheet(wb, ws, "Tickets");
 
-  const name = `Ticket_Report_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  const name = `Ticket_Report_${new Date().toISOString().slice(0,10)}.xlsx`;
   window.XLSX.writeFile(wb, name);
-
-  show(`Exported ${all.length} rows ✅`);
+  show(`Exported ${rows.length} rows ✅`);
 }
 
 function setDefaultRangeLast7Days(){
@@ -605,7 +525,7 @@ function setDefaultRangeLast7Days(){
 
 (async () => {
   await mountNav("ticket-reports");
-  await loadFilters();               // loads USERS + STATUSES too
+  await loadFilters();
   setDefaultRangeLast7Days();
   await loadPage();
 })();
@@ -615,14 +535,12 @@ applyBtn.addEventListener("click", async () => { page = 0; await loadPage(); });
 clearBtn.addEventListener("click", async () => {
   deptFilter.value = "";
   repFilter.value = "";
-  ownerFilter.value = ""; // ✅ NEW
+  ownFilter.value = "";
   q.value = "";
   setDefaultRangeLast7Days();
-
   refreshSelect(deptFilter);
   refreshSelect(repFilter);
-  refreshSelect(ownerFilter);
-
+  refreshSelect(ownFilter);
   page = 0;
   hideMsg();
   await loadPage();
