@@ -6,45 +6,23 @@
   <title>Coordinator Touchpoints — Ticket Reports</title>
   <link rel="stylesheet" href="css/styles.css" />
 
-  <!-- ✅ Table inline editor UI -->
+  <!-- small UI upgrade for editable cells -->
   <style>
-    /* table cell editors */
-    .cellEdit, .cellSelect {
+    .cellEdit, .cellSelect, .cellArea {
       width: 100%;
-      min-width: 160px;
-      height: 36px;
-      padding: 8px 10px;
-      border-radius: 12px;
+      min-width: 180px;
+      border-radius: 14px;
       border: 1px solid rgba(255,255,255,0.14);
       background: rgba(0,0,0,0.22);
       color: rgba(255,255,255,0.92);
+      padding: 10px 12px;
       outline: none;
-      transition: border-color .15s ease, background .15s ease, box-shadow .15s ease;
     }
-    .cellEdit:focus, .cellSelect:focus {
-      border-color: rgba(124,92,255,0.65);
-      box-shadow: 0 0 0 3px rgba(124,92,255,0.18);
-      background: rgba(0,0,0,0.28);
-    }
-    .cellSelect {
-      cursor: pointer;
-      appearance: none;
-      background-image:
-        linear-gradient(45deg, transparent 50%, rgba(255,255,255,0.65) 50%),
-        linear-gradient(135deg, rgba(255,255,255,0.65) 50%, transparent 50%);
-      background-position:
-        calc(100% - 18px) 14px,
-        calc(100% - 12px) 14px;
-      background-size: 6px 6px, 6px 6px;
-      background-repeat: no-repeat;
-      padding-right: 34px;
-    }
-
-    /* prevent table from looking cramped */
-    table td { vertical-align: top; }
+    .cellArea { min-height: 44px; resize: vertical; }
+    .cellSelect { padding-right: 34px; }
+    td .muted { opacity: .78; }
   </style>
 </head>
-
 <body>
   <div class="container">
     <div id="navHolder"></div>
@@ -55,28 +33,27 @@
         <p class="muted">Filter + export. Some fields are editable (POC/POR/Admin).</p>
 
         <div class="form">
-          <div class="field span3">
+          <div class="field span4">
             <label>Department</label>
             <select id="deptFilter" data-placeholder="All"></select>
           </div>
 
-          <div class="field span3">
+          <div class="field span4">
             <label>Reporter</label>
             <select id="repFilter" data-placeholder="All"></select>
           </div>
 
-          <!-- ✅ NEW: Ownership filter -->
-          <div class="field span3">
+          <div class="field span4">
             <label>Ownership</label>
-            <select id="ownerFilter" data-placeholder="All"></select>
+            <select id="ownFilter" data-placeholder="All"></select>
           </div>
 
-          <div class="field span1">
+          <div class="field span2">
             <label>From</label>
             <input id="fromDate" type="date" />
           </div>
 
-          <div class="field span1">
+          <div class="field span2">
             <label>To</label>
             <input id="toDate" type="date" />
           </div>
@@ -86,8 +63,7 @@
             <input id="q" type="text" placeholder="Type and press Apply..." />
           </div>
 
-          <div class="field span4">
-            <label>&nbsp;</label>
+          <div class="field span12">
             <div class="row" style="justify-content:flex-end; gap:10px;">
               <button id="applyBtn" class="btn primary" type="button">Apply</button>
               <button id="clearBtn" class="btn" type="button">Clear</button>
@@ -97,7 +73,6 @@
         </div>
 
         <div id="msg" class="notice" style="display:none;"></div>
-
         <div class="row" style="justify-content:space-between; margin-top:10px;">
           <div id="meta" class="muted"></div>
           <div class="row" style="gap:10px;">
