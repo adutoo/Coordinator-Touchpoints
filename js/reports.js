@@ -5,6 +5,8 @@ import { enhanceSelect, refreshSelect } from "./customSelect.js";
 import { withBusy, setBusyProgress } from "./busy.js";
 
 const coordFilter = document.getElementById("coordFilter");
+const objectiveFilter = document.getElementById("objectiveFilter"); // ✅ NEW
+
 const fromDate = document.getElementById("fromDate");
 const toDate = document.getElementById("toDate");
 const q = document.getElementById("q");
@@ -132,7 +134,10 @@ function buildBaseQuery({ includeCount = false } = {}) {
     .not("medium", "is", null).neq("medium", "")
     .not("objective", "is", null).neq("objective", "");
 
-  if (coordFilter.value) query = query.eq("owner_name", coordFilter.value);
+  if (coordFilter?.value) query = query.eq("owner_name", coordFilter.value);
+
+  // ✅ Objective filter
+  if (objectiveFilter?.value) query = query.eq("objective", objectiveFilter.value);
 
   const start = toStartISO(fromDate.value);
   const end = toEndISO(toDate.value);
@@ -172,6 +177,29 @@ async function loadCoordinatorsRaw() {
 
   enhanceSelect(coordFilter, { placeholder: "All coordinators", search: true, searchThreshold: 0 });
   refreshSelect(coordFilter);
+}
+
+async function loadObjectivesRaw() {
+  if (!objectiveFilter) return;
+
+  // Prefer objectives master table (admin-managed)
+  const { data, error } = await sb
+    .from("objectives")
+    .select("label,is_active,sort_order")
+    .eq("is_active", true)
+    .order("sort_order")
+    .order("label");
+
+  if (error) throw error;
+
+  const labels = (data || []).map(x => x.label).filter(Boolean);
+
+  objectiveFilter.innerHTML =
+    `<option value="">All</option>` +
+    labels.map(l => `<option value="${l}">${l}</option>`).join("");
+
+  enhanceSelect(objectiveFilter, { placeholder: "All objectives", search: true, searchThreshold: 0 });
+  refreshSelect(objectiveFilter);
 }
 
 async function loadPageRaw() {
@@ -227,14 +255,13 @@ async function loadPageRaw() {
 }
 
 async function deleteTouchpointRaw(rawId) {
-  // convert numeric ids to Number, keep uuid as string
   const id = /^\d+$/.test(String(rawId)) ? Number(rawId) : rawId;
 
   const { data: deletedRows, error } = await sb
     .from("touchpoints")
     .delete()
     .eq("id", id)
-    .select("id"); // IMPORTANT: lets us detect if a row was actually deleted
+    .select("id");
 
   if (error) throw error;
   return deletedRows || [];
@@ -308,16 +335,6 @@ async function loadPage() {
   });
 }
 
-async function loadCoordinators() {
-  await withBusy("Loading coordinators…", async () => {
-    setBusyProgress(null, "Fetching users…");
-    await loadCoordinatorsRaw();
-  }).catch((err) => {
-    console.error(err);
-    show(err?.message || String(err), true);
-  });
-}
-
 async function exportAllFiltered() {
   hideMsg();
   await withBusy("Preparing export…", async () => {
@@ -328,7 +345,7 @@ async function exportAllFiltered() {
   });
 }
 
-// ✅ Delete handler with real verification + progress popup
+// ✅ Delete handler with verification + progress popup
 document.addEventListener("click", async (e) => {
   const btn = e.target.closest("button[data-del]");
   if (!btn) return;
@@ -355,7 +372,7 @@ document.addEventListener("click", async (e) => {
 
     show("Deleted ✅");
     setBusyProgress(null, "Refreshing…");
-    await loadPageRaw(); // avoid nested popup
+    await loadPageRaw();
   }).catch((err) => {
     console.error(err);
     show(`Delete failed: ${err?.message || String(err)}`, true);
@@ -373,6 +390,9 @@ document.addEventListener("click", async (e) => {
     setBusyProgress(null, "Loading coordinators…");
     await loadCoordinatorsRaw();
 
+    setBusyProgress(null, "Loading objectives…");
+    await loadObjectivesRaw();
+
     setBusyProgress(null, "Loading report…");
     setDefaultRangeLast7Days();
     await loadPageRaw();
@@ -388,6 +408,11 @@ applyBtn.addEventListener("click", async () => { page = 0; await loadPage(); });
 clearBtn.addEventListener("click", async () => {
   coordFilter.value = "";
   refreshSelect(coordFilter);
+
+  if (objectiveFilter) {
+    objectiveFilter.value = "";
+    refreshSelect(objectiveFilter);
+  }
 
   q.value = "";
   setDefaultRangeLast7Days();
