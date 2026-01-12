@@ -12,12 +12,13 @@
 
     <div class="card">
       <h2>Reports</h2>
-      <p class="muted">Filter by coordinator + date range. Search and export to Excel.</p>
+      <p class="muted">Filter by coordinator + date range + objective. Search and export to Excel.</p>
 
       <div class="form">
+        <!-- ✅ LINE 1 -->
         <div class="field span3">
           <label>Coordinator Name</label>
-          <select id="coordFilter">
+          <select id="coordFilter" data-placeholder="All coordinators">
             <option value="">All</option>
           </select>
         </div>
@@ -33,6 +34,14 @@
         </div>
 
         <div class="field span3">
+          <label>Objective</label>
+          <select id="objectiveFilter" data-placeholder="All objectives">
+            <option value="">All</option>
+          </select>
+        </div>
+
+        <!-- ✅ LINE 2 -->
+        <div class="field span12">
           <label>Search (Child / Name / Ticket)</label>
           <input id="q" type="text" placeholder="Type and press Apply…" />
         </div>
