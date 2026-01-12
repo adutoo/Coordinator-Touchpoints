@@ -13,8 +13,10 @@ const resetBtn = document.getElementById("resetBtn");
 const msg = document.getElementById("msg");
 
 const TICKETS_TABLE = "tickets";
-const TICKET_SELECT = "ticket_number,student_name,department,category";
-const TICKET_MATCH_FIELD = "student_name";
+
+// IMPORTANT: Use safe select to avoid "column does not exist" breaking ticket loading.
+// We'll read what we need if present.
+const TICKET_SELECT_SAFE = "ticket_number,department,category,subject,student_name,student_child_name,raised_at";
 
 let students = [];
 let studentsByChild = new Map();
@@ -22,15 +24,16 @@ let mediums = [];
 let objectives = [];
 let ticketOptions = [];
 
-const ticketsCache = new Map(); // student_name -> list
+const ticketsCache = new Map(); // key -> list
 
 function show(text, isError = false) {
+  if (!msg) return;
   msg.style.display = "block";
   msg.style.borderColor = isError ? "rgba(255,77,109,0.55)" : "rgba(124,92,255,0.55)";
   msg.style.color = isError ? "rgba(255,200,210,0.95)" : "rgba(255,255,255,0.72)";
   msg.textContent = text;
 }
-function hideMsg() { msg.style.display = "none"; }
+function hideMsg() { if (msg) msg.style.display = "none"; }
 
 function pad2(n) { return String(n).padStart(2, "0"); }
 function fmtLocalTS(d) {
@@ -96,8 +99,14 @@ function blockRefs(block) {
     suggestion: q('textarea[data-field="suggestion"]'),
 
     ticketRaised: q('select[data-field="ticketRaised"]'),
-    ticketNumberSelect: q('select[data-field="ticketNumber"]'), // hidden; combobox used
+
+    ticketNumberHost:
+      q('select[data-field="ticketNumber"]') ||
+      q('input[data-field="ticketNumber"]') ||
+      null,
+
     ticketDept: q('input[data-field="ticketDept"]'),
+    ticketSubject: q('input[data-field="ticketSubject"]') || null,
     ticketCategory: q('input[data-field="ticketCategory"]'),
 
     timeAuto: q('input[data-field="timeAuto"]'),
@@ -135,13 +144,15 @@ function refreshNumbers() {
   });
 }
 
-// ---- Ticket Combobox UI ----
+// -------------------- Ticket Combobox --------------------
 function installTicketCombo(refs) {
-  if (!refs.ticketNumberSelect) return;
-  if (refs.ticketCombo) return;
+  const host = refs.ticketNumberHost;
+  if (!host) return null;
 
-  const sel = refs.ticketNumberSelect;
-  sel.style.display = "none";
+  if (host._ticketCombo) {
+    refs.ticketCombo = host._ticketCombo;
+    return refs.ticketCombo;
+  }
 
   const wrap = document.createElement("div");
   wrap.style.position = "relative";
@@ -151,7 +162,7 @@ function installTicketCombo(refs) {
   input.type = "text";
   input.placeholder = "Type ticket number (Optional)";
   input.autocomplete = "off";
-  input.className = "cellEdit";
+  input.style.width = "100%";
   input.style.minWidth = "0";
 
   const list = document.createElement("div");
@@ -169,58 +180,83 @@ function installTicketCombo(refs) {
   list.style.boxShadow = "0 16px 40px rgba(0,0,0,0.45)";
   list.style.padding = "6px";
 
-  sel.insertAdjacentElement("afterend", wrap);
-  wrap.appendChild(input);
-  wrap.appendChild(list);
+  if (host.tagName === "SELECT") {
+    host.style.display = "none";
+    host.insertAdjacentElement("afterend", wrap);
+    wrap.appendChild(input);
+    wrap.appendChild(list);
+  } else {
+    const parent = host.parentElement;
+    if (parent) {
+      parent.insertBefore(wrap, host);
+      wrap.appendChild(host);
+      wrap.appendChild(list);
+      input.remove();
+    }
+  }
 
-  refs.ticketCombo = { input, list, tickets: [] };
+  const realInput = (host.tagName === "INPUT") ? host : input;
+
+  const combo = { wrap, input: realInput, list, tickets: [] };
+  host._ticketCombo = combo;
+  refs.ticketCombo = combo;
 
   function closeList() { list.style.display = "none"; }
   function openList() { list.style.display = "block"; }
 
+  function metaLine(t) {
+    const dept = (t.department || "").trim() || "—";
+    const subj = (t.subject || "").trim() || "—";
+    const cat  = (t.category || "").trim() || "—";
+    const stu  = (t.student_child_name || t.student_name || "").trim() || "—";
+    return `${dept} / ${subj} / ${cat} — ${stu}`;
+  }
+
   function render(filterText) {
     const f = (filterText || "").trim().toLowerCase();
-    const items = refs.ticketCombo.tickets || [];
+    const items = combo.tickets || [];
 
     const filtered = !f
       ? items
-      : items.filter(t =>
-          String(t.ticket_number || "").toLowerCase().includes(f) ||
-          String(t.department || "").toLowerCase().includes(f) ||
-          String(t.category || "").toLowerCase().includes(f)
-        );
+      : items.filter(t => {
+          const a = String(t.ticket_number || "").toLowerCase();
+          const b = String(t.department || "").toLowerCase();
+          const c = String(t.subject || "").toLowerCase();
+          const d = String(t.category || "").toLowerCase();
+          const e = String(t.student_child_name || t.student_name || "").toLowerCase();
+          return a.includes(f) || b.includes(f) || c.includes(f) || d.includes(f) || e.includes(f);
+        });
 
     if (!filtered.length) {
-      list.innerHTML = `<div style="padding:10px 12px;opacity:.7;">No matches (you can still type any ticket number)</div>`;
+      list.innerHTML = `<div style="padding:10px 12px;opacity:.7;">No tickets found for this student (or access denied).</div>`;
       return;
     }
 
-    list.innerHTML = filtered.map(t => {
-      const meta = [t.department, t.category].filter(Boolean).join(" / ");
-      return `
-        <div data-ticket="${escAttr(t.ticket_number)}"
-             style="padding:10px 12px;border-radius:12px;cursor:pointer;border:1px solid rgba(255,255,255,0.06);margin:6px 0;">
-          <div style="font-weight:700;opacity:.95;">${escText(t.ticket_number)}</div>
-          <div style="font-size:12px;opacity:.72;white-space:normal;">${escText(meta)}</div>
-        </div>
-      `;
-    }).join("");
+    list.innerHTML = filtered.map(t => `
+      <div data-ticket="${escAttr(t.ticket_number)}"
+           style="padding:10px 12px;border-radius:12px;cursor:pointer;border:1px solid rgba(255,255,255,0.06);margin:6px 0;">
+        <div style="font-weight:700;opacity:.95;">${escText(t.ticket_number)}</div>
+        <div style="font-size:12px;opacity:.72;white-space:normal;">${escText(metaLine(t))}</div>
+      </div>
+    `).join("");
   }
 
   function fillMetaFromInput() {
-    const val = (input.value || "").trim();
-    const hit = (refs.ticketCombo.tickets || []).find(t => String(t.ticket_number) === val);
-    refs.ticketDept.value = hit?.department ?? "";
-    refs.ticketCategory.value = hit?.category ?? "";
+    const val = (combo.input.value || "").trim();
+    const hit = (combo.tickets || []).find(t => String(t.ticket_number) === val);
+
+    if (refs.ticketDept) refs.ticketDept.value = hit?.department ?? "";
+    if (refs.ticketSubject) refs.ticketSubject.value = hit?.subject ?? "";
+    if (refs.ticketCategory) refs.ticketCategory.value = hit?.category ?? "";
   }
 
-  input.addEventListener("focus", () => {
+  combo.input.addEventListener("focus", () => {
     render("");
     openList();
   });
 
-  input.addEventListener("input", () => {
-    render(input.value);
+  combo.input.addEventListener("input", () => {
+    render(combo.input.value);
     openList();
   });
 
@@ -230,7 +266,7 @@ function installTicketCombo(refs) {
     const item = e.target.closest("[data-ticket]");
     if (!item) return;
     const ticket = item.getAttribute("data-ticket");
-    input.value = ticket || "";
+    combo.input.value = ticket || "";
     closeList();
     fillMetaFromInput();
   });
@@ -239,60 +275,98 @@ function installTicketCombo(refs) {
     if (!wrap.contains(e.target)) closeList();
   });
 
-  input.addEventListener("blur", () => {
+  combo.input.addEventListener("blur", () => {
     setTimeout(() => {
       closeList();
       fillMetaFromInput();
     }, 120);
   });
+
+  return combo;
 }
 
-async function getTicketsForStudent(studentName) {
-  if (!studentName) return [];
-  if (ticketsCache.has(studentName)) return ticketsCache.get(studentName);
+// -------------------- Ticket Fetch (FIXED) --------------------
+function cacheKeyFor(childName, studentName) {
+  return (childName || "").trim() || (studentName || "").trim() || "";
+}
 
-  // SHOW BUSY only when we actually hit DB (not cache)
+async function queryTicketsAttempt({ field, op, value }) {
+  let q = sb.from(TICKETS_TABLE).select(TICKET_SELECT_SAFE);
+
+  if (op === "eq") q = q.eq(field, value);
+  if (op === "ilike") q = q.ilike(field, value);
+
+  // prefer newest first
+  q = q.order("raised_at", { ascending: false }).order("ticket_number", { ascending: false }).limit(200);
+
+  const { data, error } = await q;
+  return { data, error };
+}
+
+async function getTicketsForStudent({ childName, studentName }) {
+  const key = cacheKeyFor(childName, studentName);
+  if (!key) return [];
+  if (ticketsCache.has(key)) return ticketsCache.get(key);
+
   return await withBusy("Loading tickets…", async () => {
-    const { data, error } = await sb
-      .from(TICKETS_TABLE)
-      .select(TICKET_SELECT)
-      .eq(TICKET_MATCH_FIELD, studentName)
-      .order("ticket_number", { ascending: false });
+    // Try multiple ways so it works even if data format differs slightly.
+    const attempts = [];
 
-    if (error) {
-      console.error("Tickets fetch error:", error);
-      ticketsCache.set(studentName, []);
-      return [];
+    if (childName) {
+      attempts.push({ field: "student_child_name", op: "eq", value: childName });
+      attempts.push({ field: "student_child_name", op: "ilike", value: `%${childName}%` });
+    }
+    if (studentName) {
+      attempts.push({ field: "student_name", op: "eq", value: studentName });
     }
 
-    const list = (data || []).filter(r => r?.ticket_number);
-    ticketsCache.set(studentName, list);
-    return list;
+    for (const a of attempts) {
+      const { data, error } = await queryTicketsAttempt(a);
+
+      if (error) {
+        // ✅ show real reason instead of silently failing
+        console.error("Tickets fetch error:", error);
+        show(`Tickets not loading: ${error.message}`, true);
+
+        // If it's RLS / permission, stop trying further.
+        ticketsCache.set(key, []);
+        return [];
+      }
+
+      if (data?.length) {
+        const list = data.filter(r => r?.ticket_number);
+        ticketsCache.set(key, list);
+        return list;
+      }
+    }
+
+    ticketsCache.set(key, []);
+    return [];
   });
 }
 
 async function updateTicketsForChild(refs, keepTyped = "") {
   const s = studentsByChild.get(refs.child.value);
+  const childName = refs.child.value || "";
   const studentName = s?.student_name ?? "";
 
-  refs.ticketDept.value = "";
-  refs.ticketCategory.value = "";
+  if (refs.ticketDept) refs.ticketDept.value = "";
+  if (refs.ticketSubject) refs.ticketSubject.value = "";
+  if (refs.ticketCategory) refs.ticketCategory.value = "";
 
-  installTicketCombo(refs);
+  const combo = installTicketCombo(refs);
+  if (!combo) return;
 
-  refs.ticketCombo.input.value = keepTyped || "";
-  refs.ticketCombo.tickets = [];
+  combo.input.value = keepTyped || "";
+  combo.tickets = [];
 
-  if (!studentName) return;
+  if (!childName && !studentName) return;
 
-  const tickets = await getTicketsForStudent(studentName);
-  refs.ticketCombo.tickets = tickets;
+  // clear any old message only when we actually start loading
+  hideMsg();
 
-  if (keepTyped) {
-    const hit = tickets.find(t => String(t.ticket_number) === keepTyped);
-    refs.ticketDept.value = hit?.department ?? "";
-    refs.ticketCategory.value = hit?.category ?? "";
-  }
+  const tickets = await getTicketsForStudent({ childName, studentName });
+  combo.tickets = tickets;
 }
 
 function enhanceBlockSelects(refs) {
@@ -343,6 +417,8 @@ function createBlock(cloneFrom = null) {
   let clonedTicket = "";
   if (cloneFrom) {
     const src = blockRefs(cloneFrom);
+    const srcCombo = src.ticketNumberHost?._ticketCombo;
+    clonedTicket = srcCombo?.input?.value || "";
 
     refs.child.value = src.child.value;
     refs.medium.value = src.medium.value;
@@ -351,8 +427,6 @@ function createBlock(cloneFrom = null) {
 
     refs.positives.value = src.positives.value;
     refs.suggestion.value = src.suggestion.value;
-
-    clonedTicket = src.ticketCombo?.input?.value || "";
   }
 
   fillStudentAuto(refs);
@@ -444,7 +518,8 @@ form.addEventListener("submit", async (e) => {
     const suggestion = refs.suggestion.value.trim();
 
     const ticket_raised = refs.ticketRaised.value ? refs.ticketRaised.value : null;
-    const ticket_number = refs.ticketCombo?.input?.value?.trim() || "";
+    const combo = refs.ticketNumberHost?._ticketCombo;
+    const ticket_number = combo?.input?.value?.trim() || "";
 
     const time_min = fillTimeAuto(refs);
     const timeText = `${time_min} min`;
