@@ -27,6 +27,10 @@ const catMsg = document.getElementById("catMsg");
 const pocMsg = document.getElementById("pocMsg");
 const porMsg = document.getElementById("porMsg");
 
+// ✅ Call settings msgs
+const callPromptMsg = document.getElementById("callPromptMsg");
+const coordMsg = document.getElementById("coordMsg");
+
 // -------------------- Busy helpers (prevent nested popups) --------------------
 let __busyDepth = 0;
 async function runBusy(title, fn) {
@@ -64,6 +68,22 @@ function escapeHtml(str) {
 let parsedStudents = [];
 let ticketIssueRaisedBy = [];
 let ticketDepartments = [];
+
+// ✅ app_settings keys for call feature
+const CALL_PROMPT_KEY = "call_summary_prompt";
+const COORD_CFG_KEY = "coordinators_config";
+
+// -------------------- settings helpers --------------------
+async function readAppSetting(key) {
+  const { data, error } = await sb.from("app_settings").select("value").eq("key", key).maybeSingle();
+  if (error) throw error;
+  return data?.value ?? null;
+}
+
+async function upsertAppSetting(key, value) {
+  const { error } = await sb.from("app_settings").upsert({ key, value }, { onConflict: "key" });
+  if (error) throw error;
+}
 
 function setSelectOptions(selectEl, items, getValue, getLabel) {
   if (!selectEl) return;
@@ -133,6 +153,10 @@ function setSelectOptions(selectEl, items, getValue, getLabel) {
     wireAddCategory();
     wireAddPocMap();
     wireAddPorMap();
+
+    // ✅ Call feature admin wires
+    wireCallPrompt();
+    wireCoordinatorDirectory();
 
     setBusyProgress(null, "Loading data…");
     await refreshAll(); // popup stays until done
@@ -322,6 +346,214 @@ async function refreshUsers() {
   `
     )
     .join("");
+}
+
+// -------------------- ✅ Call Summary Prompt --------------------
+function defaultCallPrompt() {
+  return [
+    "You are an assistant that summarizes a coordinator-parent call transcript.",
+    "Return ONLY in this exact format:",
+    "",
+    "POSITIVES:",
+    "- ...",
+    "",
+    "SUGGESTIONS:",
+    "- ...",
+    "",
+    "Rules:",
+    "1) Include a point only if it is clearly present in the transcript.",
+    "2) Keep bullets short, actionable, and school-context.",
+    "3) If nothing found in a section, write: - (None mentioned)",
+  ].join("\n");
+}
+
+function parsePromptValue(v) {
+  // supports stored as {prompt: "..."} OR raw string
+  if (!v) return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "object" && typeof v.prompt === "string") return v.prompt;
+  return "";
+}
+
+async function refreshCallPrompt() {
+  hide(callPromptMsg);
+  const box = document.getElementById("callPromptText");
+  if (!box) return;
+
+  try {
+    const v = await readAppSetting(CALL_PROMPT_KEY);
+    const prompt = parsePromptValue(v) || defaultCallPrompt();
+    box.value = prompt;
+  } catch (e) {
+    console.error(e);
+    // still show default so UI works
+    box.value = defaultCallPrompt();
+    show(callPromptMsg, `Failed to load prompt: ${String(e?.message || e)}`, true);
+  }
+}
+
+function wireCallPrompt() {
+  const saveBtn = document.getElementById("callPromptSave");
+  const box = document.getElementById("callPromptText");
+  if (!saveBtn || !box) return;
+
+  saveBtn.addEventListener("click", async () => {
+    hide(callPromptMsg);
+    try {
+      await runBusy("Saving prompt…", async () => {
+        const prompt = String(box.value || "").trim();
+        if (!prompt) return show(callPromptMsg, "Prompt cannot be empty.", true);
+
+        await upsertAppSetting(CALL_PROMPT_KEY, { prompt });
+        show(callPromptMsg, "Prompt saved globally ✅");
+      });
+    } catch (e) {
+      show(callPromptMsg, String(e?.message || e), true);
+    }
+  });
+}
+
+// -------------------- ✅ Coordinator Directory (Number -> Email) --------------------
+function normalizeNumber(n) {
+  let s = String(n ?? "").trim();
+  s = s.replace(/[()\-\s]/g, "");
+  if (s.startsWith("+")) s = "+" + s.slice(1).replace(/[^\d]/g, "");
+  else s = s.replace(/[^\d]/g, "");
+  return s;
+}
+
+function normalizeEmail(e) {
+  return String(e ?? "").trim().toLowerCase();
+}
+
+function parseCoordValue(v) {
+  if (!v) return [];
+  if (Array.isArray(v)) return v;
+  if (typeof v === "object" && Array.isArray(v.coordinators)) return v.coordinators;
+  if (typeof v === "object" && Array.isArray(v.list)) return v.list;
+  return [];
+}
+
+function normalizeCoordinatorList(list) {
+  const arr = Array.isArray(list) ? list : [];
+  const cleaned = arr
+    .map((x) => ({
+      number: normalizeNumber(x?.number),
+      email: normalizeEmail(x?.email),
+    }))
+    .filter((x) => x.number && x.email && x.email.includes("@"));
+
+  const map = new Map();
+  for (const c of cleaned) map.set(c.number, c.email); // last wins
+
+  const out = Array.from(map.entries()).map(([number, email]) => ({ number, email }));
+  out.sort((a, b) => a.email.localeCompare(b.email) || a.number.localeCompare(b.number));
+  return out;
+}
+
+function renderCoordinatorRows(list) {
+  const tbody = document.getElementById("coordRows");
+  if (!tbody) return;
+
+  if (!list?.length) {
+    tbody.innerHTML = `<tr><td colspan="3">No coordinators added yet.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = list
+    .map(
+      (c) => `
+      <tr>
+        <td>${escapeHtml(c.email)}</td>
+        <td>${escapeHtml(c.number)}</td>
+        <td>
+          <button class="btn danger" data-del-coord="${escapeHtml(c.number)}">Delete</button>
+        </td>
+      </tr>
+    `
+    )
+    .join("");
+}
+
+async function refreshCoordinatorDirectory() {
+  hide(coordMsg);
+  try {
+    const v = await readAppSetting(COORD_CFG_KEY);
+    const list = normalizeCoordinatorList(parseCoordValue(v));
+    renderCoordinatorRows(list);
+  } catch (e) {
+    console.error(e);
+    renderCoordinatorRows([]);
+    show(coordMsg, `Failed to load coordinators: ${String(e?.message || e)}`, true);
+  }
+}
+
+function wireCoordinatorDirectory() {
+  const form = document.getElementById("coordForm");
+  const tbody = document.getElementById("coordRows");
+  if (!form || !tbody) return;
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    hide(coordMsg);
+
+    try {
+      await runBusy("Saving coordinator…", async () => {
+        const numberRaw = document.getElementById("coordNumber")?.value || "";
+        const emailRaw = document.getElementById("coordEmail")?.value || "";
+
+        const number = normalizeNumber(numberRaw);
+        const email = normalizeEmail(emailRaw);
+
+        if (!number) return show(coordMsg, "Coordinator number is required.", true);
+        if (!email || !email.includes("@")) return show(coordMsg, "Valid coordinator email is required.", true);
+
+        const current = await readAppSetting(COORD_CFG_KEY).catch(() => null);
+        const list = normalizeCoordinatorList(parseCoordValue(current));
+
+        const map = new Map(list.map((x) => [x.number, x.email]));
+        map.set(number, email);
+
+        const next = normalizeCoordinatorList(Array.from(map.entries()).map(([n, em]) => ({ number: n, email: em })));
+
+        await upsertAppSetting(COORD_CFG_KEY, { coordinators: next });
+
+        renderCoordinatorRows(next);
+        show(coordMsg, "Saved ✅");
+        form.reset();
+      });
+    } catch (e2) {
+      show(coordMsg, String(e2?.message || e2), true);
+    }
+  });
+
+  tbody.addEventListener("click", async (e) => {
+    const btn = e.target.closest("button[data-del-coord]");
+    if (!btn) return;
+
+    const num = btn.getAttribute("data-del-coord");
+    if (!num) return;
+
+    const ok = confirm(`Delete coordinator mapping for ${num}?`);
+    if (!ok) return;
+
+    hide(coordMsg);
+
+    try {
+      await runBusy("Deleting coordinator…", async () => {
+        const current = await readAppSetting(COORD_CFG_KEY).catch(() => null);
+        const list = normalizeCoordinatorList(parseCoordValue(current));
+
+        const next = list.filter((x) => x.number !== num);
+
+        await upsertAppSetting(COORD_CFG_KEY, { coordinators: next });
+        renderCoordinatorRows(next);
+        show(coordMsg, "Deleted ✅");
+      });
+    } catch (e2) {
+      show(coordMsg, String(e2?.message || e2), true);
+    }
+  });
 }
 
 // -------------------- Excel Upload (Students) --------------------
@@ -777,11 +1009,7 @@ async function refreshTicketStatuses() {
 
   statusRows.innerHTML = `<tr><td colspan="4">Loading…</td></tr>`;
 
-  const { data, error } = await sb
-    .from("ticket_statuses")
-    .select("id,label,is_active,sort_order")
-    .order("sort_order")
-    .order("label");
+  const { data, error } = await sb.from("ticket_statuses").select("id,label,is_active,sort_order").order("sort_order").order("label");
 
   if (error) {
     statusRows.innerHTML = `<tr><td colspan="4">${escapeHtml(error.message)}</td></tr>`;
@@ -1359,6 +1587,11 @@ async function refreshAll() {
   await refreshCategories();
   await refreshPocMap();
   await refreshPorMap();
+
+  // ✅ Call feature settings
+  setBusyProgress(90, "Loading call settings…");
+  await refreshCallPrompt();
+  await refreshCoordinatorDirectory();
 
   setBusyProgress(100, "Done");
 }
