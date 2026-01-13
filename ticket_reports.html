@@ -79,8 +79,21 @@
         <h2>Ticket Reports</h2>
         <p class="muted">Filter + export. Some fields are editable (POC/POR/Admin).</p>
 
-        <!-- ✅ 3 columns per line (span4 + span4 + span4) -->
         <div class="form">
+
+          <!-- ✅ NEW: Session / From / To -->
+          <div class="field span4">
+            <label>Session</label>
+            <select id="sessionFilter" data-placeholder="Select session..."></select>
+          </div>
+          <div class="field span4">
+            <label>From</label>
+            <input id="fromDate" type="date" />
+          </div>
+          <div class="field span4">
+            <label>To (end-exclusive)</label>
+            <input id="toDate" type="date" />
+          </div>
 
           <!-- Line 1: POC / POR / Ownership -->
           <div class="field span4">
@@ -153,18 +166,10 @@
             <select id="parentWeekFilter" data-placeholder="All"></select>
           </div>
 
-          <!-- Line 5: Search / From / To -->
-          <div class="field span4">
+          <!-- Search full width (cleaner now that Session took the date row) -->
+          <div class="field span12">
             <label>Search (Ticket / Student / Category)</label>
             <input id="q" type="text" placeholder="Type and press Apply..." />
-          </div>
-          <div class="field span4">
-            <label>From</label>
-            <input id="fromDate" type="date" />
-          </div>
-          <div class="field span4">
-            <label>To</label>
-            <input id="toDate" type="date" />
           </div>
 
           <!-- Buttons -->
