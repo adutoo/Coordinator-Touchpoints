@@ -114,6 +114,68 @@
         <div id="sessMsg" class="notice" style="display:none;"></div>
       </div>
 
+      <!-- ✅ Call Summary Prompt (Gemini) -->
+      <div class="card span6">
+        <h2>Call Summary Prompt (Gemini)</h2>
+        <p class="muted">
+          This prompt will be used by the Call Reports page when clicking <b>Generate</b>.
+          Keep it short and instruction-based. Transcript will be appended automatically.
+        </p>
+
+        <div class="form">
+          <div class="field span12">
+            <label>Default Prompt (Global)</label>
+            <textarea id="callPromptText" rows="8" placeholder="Write the prompt here..."></textarea>
+          </div>
+
+          <div class="field span12">
+            <button id="callPromptSave" class="btn primary" type="button">Save Prompt</button>
+          </div>
+        </div>
+
+        <div id="callPromptMsg" class="notice" style="display:none;"></div>
+      </div>
+
+      <!-- ✅ Coordinator Directory -->
+<div class="card span6">
+  <h2>Coordinator Directory</h2>
+  <p class="muted">
+    Used to map <b>Coordinator Number</b> (from call_logs) → <b>Coordinator Email</b> (login email).
+  </p>
+
+  <form id="coordForm" class="form">
+    <div class="field span6">
+      <label>Coordinator Number</label>
+      <input id="coordNumber" type="text" placeholder="e.g., +91XXXXXXXXXX" required />
+    </div>
+
+    <div class="field span6">
+      <label>Coordinator Email</label>
+      <input id="coordEmail" type="email" placeholder="e.g., coord@school.com" required />
+    </div>
+
+    <div class="field span12">
+      <button class="btn primary" type="submit">Add / Update</button>
+    </div>
+  </form>
+
+  <div class="tablewrap maxh" style="margin-top:10px;">
+    <table>
+      <thead>
+        <tr>
+          <th>Coordinator Email</th>
+          <th>Coordinator Number</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="coordRows"></tbody>
+    </table>
+  </div>
+
+  <div id="coordMsg" class="notice" style="display:none;"></div>
+</div>
+
+
       <!-- Upload students -->
       <div class="card span6">
         <h2>Upload Students (Excel)</h2>
