@@ -82,6 +82,38 @@
         <div id="userMgmtMsg" class="notice" style="display:none;"></div>
       </div>
 
+      <!-- ✅ Manage Sessions -->
+      <div class="card span6">
+        <h2>Manage Sessions</h2>
+        <p class="muted">
+          Sessions control default report date ranges.
+          Rule: <b>From = 01-04-YYYY</b> and <b>To = 01-04-(YYYY+1)</b>.
+        </p>
+
+        <div class="form">
+          <div class="field span12">
+            <label>Sessions (one per line, like 2025-26)</label>
+            <textarea id="sessList" rows="7" placeholder="2024-25&#10;2025-26&#10;2026-27"></textarea>
+          </div>
+
+          <div class="field span6">
+            <label>Default Session (Global)</label>
+            <select id="sessDefault" data-placeholder="Select default..."></select>
+            <div id="sessRangePreview" class="muted" style="margin-top:8px;"></div>
+          </div>
+
+          <div class="field span6">
+            <label>&nbsp;</label>
+            <div class="row" style="gap:10px;flex-wrap:wrap;">
+              <button id="sessSave" class="btn primary" type="button">Save Sessions</button>
+              <button id="sessUseDefault" class="btn" type="button">Use Default Now</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="sessMsg" class="notice" style="display:none;"></div>
+      </div>
+
       <!-- Upload students -->
       <div class="card span6">
         <h2>Upload Students (Excel)</h2>
@@ -259,7 +291,7 @@
         <div id="ticketMsg" class="notice" style="display:none;"></div>
       </div>
 
-      <!-- ✅ NEW: Manage Ticket Statuses -->
+      <!-- ✅ Manage Ticket Statuses -->
       <div class="card span6">
         <h2>Manage Ticket Statuses</h2>
         <p class="muted">Controls Ticket Status dropdown used in Ticket Reports.</p>
