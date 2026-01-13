@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Coordinator Touchpoints — Call New Entry</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <div id="navHolder"></div>
+
+    <div class="grid">
+      <div class="card span12">
+        <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+          <div>
+            <h2 style="margin:0;">Call New Entry</h2>
+            <div id="meta" class="muted">—</div>
+          </div>
+          <div class="row" style="gap:10px;">
+            <button id="backBtn" class="btn" type="button">Back to Call Reports</button>
+          </div>
+        </div>
+
+        <div id="msg" class="notice" style="display:none;margin-top:10px;"></div>
+
+        <div class="form" style="margin-top:12px;">
+          <div class="field span6">
+            <label>Parent Number</label>
+            <input id="parentNumber" type="text" readonly />
+          </div>
+          <div class="field span6">
+            <label>Coordinator</label>
+            <input id="coordinatorName" type="text" readonly />
+          </div>
+
+          <div class="field span6">
+            <label>Call Start</label>
+            <input id="callStart" type="text" readonly />
+          </div>
+          <div class="field span6">
+            <label>Call End</label>
+            <input id="callEnd" type="text" readonly />
+          </div>
+
+          <div class="field span12">
+            <label>Positives / Strengths / What good we are doing</label>
+            <textarea id="positives" rows="8"></textarea>
+          </div>
+
+          <div class="field span12">
+            <label>Suggestions / Weakness / Improvements / Questions</label>
+            <textarea id="suggestions" rows="8"></textarea>
+          </div>
+
+          <div class="field span12">
+            <label>Full Call Summary (Generated)</label>
+            <textarea id="fullSummary" rows="8" readonly></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script type="module" src="js/callEntry.js"></script>
+</body>
+</html>
