@@ -4,8 +4,18 @@ import { mountNav } from "./nav.js";
 import { getMe } from "./auth.js";
 import { enhanceSelect, refreshSelect } from "./customSelect.js";
 import { withBusy, setBusyProgress } from "./busy.js";
+import {
+  listSessions,
+  getSessionLabel,
+  setSessionLabel,
+  getSessionRange,
+  applySessionToDateInputs,
+  clampRangeToSession,
+} from "./session.js";
 
 // -------------------- DOM --------------------
+const sessionFilter = document.getElementById("sessionFilter");
+
 const pocFilter = document.getElementById("pocFilter");
 const porFilter = document.getElementById("porFilter");
 const ownerFilter = document.getElementById("ownerFilter");
@@ -45,6 +55,19 @@ const statusMsList = document.getElementById("statusMsList");
 const statusMsAll = document.getElementById("statusMsAll");
 const statusMsClear = document.getElementById("statusMsClear");
 
+
+const sessionLabel = document.getElementById("session")?.value || ""; // use your actual session select id
+const fromEl = document.getElementById("from"); // use your actual From input id
+const toEl = document.getElementById("to");     // use your actual To input id
+
+const { fromISO, toISO } = clampRangeToSession({
+  from: fromEl,
+  to: toEl,
+  sessionLabel,
+  setIfEmpty: true
+});
+
+
 const PAGE_SIZE = 50;
 let page = 0;
 let totalCount = 0;
@@ -52,7 +75,7 @@ let totalCount = 0;
 // multiselect state
 let statusOptions = []; // labels
 let selectedStatuses = new Set(); // labels
-let includeBlankStatus = false; // checkbox state for "(Blank)"
+let includeBlankStatus = false; // "(Blank)"
 
 // -------------------- Busy wrapper (avoid nested popups) --------------------
 let __busyDepth = 0;
@@ -86,11 +109,6 @@ function toStartISO(yyyy_mm_dd) {
   const [y, m, d] = yyyy_mm_dd.split("-").map(Number);
   return new Date(y, m - 1, d, 0, 0, 0, 0).toISOString();
 }
-function toEndISO(yyyy_mm_dd) {
-  if (!yyyy_mm_dd) return null;
-  const [y, m, d] = yyyy_mm_dd.split("-").map(Number);
-  return new Date(y, m - 1, d, 23, 59, 59, 999).toISOString();
-}
 
 function isoWeekNumber(dateObj) {
   const now = new Date(dateObj);
@@ -101,13 +119,32 @@ function isoWeekNumber(dateObj) {
   return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
 }
 
-function setDefaultRangeLast7Days() {
-  const now = new Date();
-  const to = new Date(now);
-  const from = new Date(now);
-  from.setDate(from.getDate() - 6);
-  fromDate.value = `${from.getFullYear()}-${pad(from.getMonth() + 1)}-${pad(from.getDate())}`;
-  toDate.value = `${to.getFullYear()}-${pad(to.getMonth() + 1)}-${pad(to.getDate())}`;
+// -------------------- Session UI --------------------
+function initSessionUI() {
+  if (!sessionFilter) return;
+
+  const sessions = listSessions({ past: 6, future: 1 });
+  sessionFilter.innerHTML = sessions.map(s => `<option value="${s}">${s}</option>`).join("");
+
+  const cur = getSessionLabel();
+  sessionFilter.value = cur;
+
+  enhanceSelect(sessionFilter, { placeholder: "Select session...", search: true, searchThreshold: 0 });
+  refreshSelect(sessionFilter);
+
+  // Default dates = session boundaries
+  applySessionToDateInputs(fromDate, toDate, cur);
+
+  sessionFilter.addEventListener("change", async () => {
+    const val = sessionFilter.value;
+    setSessionLabel(val);
+
+    // Reset dates to session boundaries
+    applySessionToDateInputs(fromDate, toDate, val);
+
+    page = 0;
+    await loadPage();
+  });
 }
 
 // -------------------- Fetch helpers (paged) --------------------
@@ -146,28 +183,22 @@ function openStatusMs() { statusMsPanel.style.display = "block"; }
 
 function renderStatusMsButton() {
   const n = selectedStatuses.size + (includeBlankStatus ? 1 : 0);
-  if (n === 0) {
-    statusMsText.textContent = "All";
-    return;
-  }
+  if (n === 0) { statusMsText.textContent = "All"; return; }
   if (n === 1) {
-    if (includeBlankStatus) statusMsText.textContent = "(Blank)";
-    else statusMsText.textContent = Array.from(selectedStatuses)[0];
+    statusMsText.textContent = includeBlankStatus ? "(Blank)" : Array.from(selectedStatuses)[0];
     return;
   }
   statusMsText.textContent = `${n} selected`;
 }
 
 function renderStatusMsList() {
-  // build list with (Blank) + statuses
   const items = [
     { label: "(Blank)", key: "__blank__" },
     ...statusOptions.map(s => ({ label: s, key: s }))
   ];
 
   statusMsList.innerHTML = items.map(it => {
-    const checked =
-      it.key === "__blank__" ? includeBlankStatus : selectedStatuses.has(it.key);
+    const checked = it.key === "__blank__" ? includeBlankStatus : selectedStatuses.has(it.key);
     return `
       <div class="ms-item" data-key="${it.key}">
         <input type="checkbox" ${checked ? "checked" : ""} />
@@ -177,14 +208,12 @@ function renderStatusMsList() {
   }).join("");
 
   statusMsList.querySelectorAll(".ms-item").forEach(row => {
-    row.addEventListener("click", (e) => {
-      // allow checkbox click too
+    row.addEventListener("click", () => {
       const key = row.getAttribute("data-key");
       if (!key) return;
 
-      if (key === "__blank__") {
-        includeBlankStatus = !includeBlankStatus;
-      } else {
+      if (key === "__blank__") includeBlankStatus = !includeBlankStatus;
+      else {
         if (selectedStatuses.has(key)) selectedStatuses.delete(key);
         else selectedStatuses.add(key);
       }
@@ -254,7 +283,7 @@ async function loadFilters() {
       `<option value="">All</option>` +
       (sR.data || []).map(x => `<option value="${x.label}">${x.label}</option>`).join("");
 
-    // Categories (active) - distinct labels (since table has issue_raised_by too)
+    // Categories (active) - distinct labels
     const cats = await fetchDistinctPaged("ticket_categories", "label", {
       where: [{ op: "eq", col: "is_active", val: true }],
       order: "label",
@@ -275,29 +304,15 @@ async function loadFilters() {
       fetchDistinctPaged("tickets", "section", { order: "section" }),
     ]);
 
-    repFilter.innerHTML =
-      `<option value="">All</option>` +
-      rep.map(x => `<option value="${x}">${x}</option>`).join("");
-
-    pocFilter.innerHTML =
-      `<option value="">All</option>` +
-      poc.map(x => `<option value="${x}">${x}</option>`).join("");
-
-    porFilter.innerHTML =
-      `<option value="">All</option>` +
-      por.map(x => `<option value="${x}">${x}</option>`).join("");
-
+    repFilter.innerHTML = `<option value="">All</option>` + rep.map(x => `<option value="${x}">${x}</option>`).join("");
+    pocFilter.innerHTML = `<option value="">All</option>` + poc.map(x => `<option value="${x}">${x}</option>`).join("");
+    porFilter.innerHTML = `<option value="">All</option>` + por.map(x => `<option value="${x}">${x}</option>`).join("");
     ownerFilter.innerHTML =
       `<option value="">All</option>` +
       [`(Unassigned)`, ...own].map(x => `<option value="${x}">${x}</option>`).join("");
 
-    classFilter.innerHTML =
-      `<option value="">All</option>` +
-      cls.map(x => `<option value="${x}">${x}</option>`).join("");
-
-    sectionFilter.innerHTML =
-      `<option value="">All</option>` +
-      sec.map(x => `<option value="${x}">${x}</option>`).join("");
+    classFilter.innerHTML = `<option value="">All</option>` + cls.map(x => `<option value="${x}">${x}</option>`).join("");
+    sectionFilter.innerHTML = `<option value="">All</option>` + sec.map(x => `<option value="${x}">${x}</option>`).join("");
 
     // Week count filters (fixed choices)
     const wkOpts = [
@@ -314,7 +329,6 @@ async function loadFilters() {
 
     setBusyProgress(60, "Loading ticket statuses…");
 
-    // Ticket statuses (active) for multiselect
     const stR = await sb
       .from("ticket_statuses")
       .select("label")
@@ -331,7 +345,6 @@ async function loadFilters() {
 
     setBusyProgress(85, "Enhancing dropdowns…");
 
-    // Enhance selects
     const mk = (el, ph) => enhanceSelect(el, { placeholder: ph, search: true, searchThreshold: 0 });
 
     mk(pocFilter, "All");
@@ -353,7 +366,7 @@ async function loadFilters() {
   });
 }
 
-// -------------------- Query builder --------------------
+// -------------------- Query builder (SESSION-AWARE) --------------------
 function buildServerQuery({ includeCount = false } = {}) {
   let query = sb
     .from("tickets")
@@ -383,11 +396,20 @@ function buildServerQuery({ includeCount = false } = {}) {
   // Reporter
   if (repFilter.value) query = query.eq("reporter_email", repFilter.value);
 
-  // Date range
-  const start = toStartISO(fromDate.value);
-  const end = toEndISO(toDate.value);
-  if (start) query = query.gte("raised_at", start);
-  if (end) query = query.lte("raised_at", end);
+  // ✅ Session + Date range (To is end-exclusive)
+  const sessLabel = sessionFilter?.value || getSessionLabel();
+  const sess = getSessionRange(sessLabel);
+
+  const startISO = toStartISO(fromDate.value);
+  const endExclusiveISO = toStartISO(toDate.value);
+
+  const start = startISO ? new Date(startISO) : new Date(sess.start);
+  const end = endExclusiveISO ? new Date(endExclusiveISO) : new Date(sess.end);
+
+  const clamped = clampRangeToSession(start, end, sessLabel);
+
+  query = query.gte("raised_at", clamped.from.toISOString());
+  query = query.lt("raised_at", clamped.to.toISOString());
 
   // Search
   const text = q.value.trim();
@@ -403,9 +425,6 @@ function buildServerQuery({ includeCount = false } = {}) {
   const hasBlank = includeBlankStatus === true;
 
   // server-side only when safe:
-  // - only blank -> OR null/empty
-  // - only non-blank -> IN(...)
-  // if blank + nonblank together => client mode
   if (hasBlank && !hasSome) {
     query = query.or("ticket_status.is.null,ticket_status.eq.");
   } else if (!hasBlank && hasSome) {
@@ -424,7 +443,7 @@ function derivedFiltersActive() {
 function statusNeedsClientMode() {
   const hasSome = selectedStatuses.size > 0;
   const hasBlank = includeBlankStatus === true;
-  return hasBlank && hasSome; // blank + others together
+  return hasBlank && hasSome;
 }
 
 function matchCountFilter(val, n) {
@@ -444,7 +463,7 @@ async function fetchDerivedForTickets(ticketNumbers) {
   const curWeek = isoWeekNumber(now);
   const curYear = now.getFullYear();
 
-  const chunkSize = 200; // safe for URL length
+  const chunkSize = 200;
   for (let i = 0; i < ticketNumbers.length; i += chunkSize) {
     const batch = ticketNumbers.slice(i, i + chunkSize);
 
@@ -462,9 +481,7 @@ async function fetchDerivedForTickets(ticketNumbers) {
 
     for (const r of (data || [])) {
       const k = r.ticket_number;
-      if (!map.has(k)) {
-        map.set(k, { action: [], parent: [], actionWeek: 0, parentWeek: 0 });
-      }
+      if (!map.has(k)) map.set(k, { action: [], parent: [], actionWeek: 0, parentWeek: 0 });
       const rec = map.get(k);
 
       if (r.objective === "Ticket: Action") {
@@ -645,7 +662,7 @@ async function loadPage() {
       return;
     }
 
-    // -------- CLIENT MODE (for derived filters or blank+multi status) --------
+    // -------- CLIENT MODE --------
     const allTickets = await fetchAllTicketsForClientMode();
 
     setBusyProgress(40, "Loading derived weekly counts…");
@@ -656,13 +673,11 @@ async function loadPage() {
     const aVal = actionsWeekFilter.value;
     const pVal = parentWeekFilter.value;
 
-    // apply derived filters
     let filtered = allTickets.filter(t => {
       const d = derivedMap.get(t.ticket_number) || { actionWeek: 0, parentWeek: 0 };
       if (!matchCountFilter(aVal, d.actionWeek ?? 0)) return false;
       if (!matchCountFilter(pVal, d.parentWeek ?? 0)) return false;
 
-      // status filter when blank+others (or blank-only already handled server-side but ok)
       const hasSome = selectedStatuses.size > 0;
       const hasBlank = includeBlankStatus === true;
       if (hasSome || hasBlank) {
@@ -676,7 +691,6 @@ async function loadPage() {
       return true;
     });
 
-    // already ordered by raised_at desc from server query, so keep order
     totalCount = filtered.length;
 
     const maxPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
@@ -754,7 +768,6 @@ async function exportAllFiltered() {
   await runBusy("Preparing export…", async () => {
     setBusyProgress(10, "Fetching all filtered tickets…");
 
-    // Export uses CLIENT MODE logic always (so it matches filters exactly)
     const allTickets = await fetchAllTicketsForClientMode();
 
     setBusyProgress(45, "Loading derived weekly counts…");
@@ -769,7 +782,6 @@ async function exportAllFiltered() {
       if (!matchCountFilter(aVal, d.actionWeek ?? 0)) return false;
       if (!matchCountFilter(pVal, d.parentWeek ?? 0)) return false;
 
-      // status multi
       const hasSome = selectedStatuses.size > 0;
       const hasBlank = includeBlankStatus === true;
       if (hasSome || hasBlank) {
@@ -790,8 +802,6 @@ async function exportAllFiltered() {
 
     setBusyProgress(85, "Building XLSX…");
 
-    // NOTE: You earlier asked many headers even if empty -> we include them.
-    // For the two "formula" columns, we export them EMPTY as you requested.
     const rows = filtered.map(t => {
       const d = derived.get(t.ticket_number) || { actionWeek: 0, parentWeek: 0 };
 
@@ -823,7 +833,6 @@ async function exportAllFiltered() {
 
         "Change Ownership": td(t.change_ownership),
 
-        // You asked these columns even if empty:
         "Follow-Up/Action Dates": td(t.follow_up_action_dates),
         "Follow-Up/Action Type": td(t.follow_up_action_type),
 
@@ -849,7 +858,6 @@ async function exportAllFiltered() {
 
         "Comments by POR": td(t.comments_by_por),
 
-        // Formula columns (export EMPTY)
         "Ticket Action Comments (filled by formula, don't enter anything in this column)": "",
         "Ticket Parent Updates (filled by formula, don't enter anything in this column)": "",
 
@@ -862,7 +870,8 @@ async function exportAllFiltered() {
     const wb = window.XLSX.utils.book_new();
     window.XLSX.utils.book_append_sheet(wb, ws, "Tickets");
 
-    const name = `Ticket_Report_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    const sessLabel = sessionFilter?.value || getSessionLabel();
+    const name = `Ticket_Report_${sessLabel}_${new Date().toISOString().slice(0, 10)}.xlsx`;
     window.XLSX.writeFile(wb, name);
 
     show(`Exported ${rows.length} rows ✅`);
@@ -873,8 +882,14 @@ async function exportAllFiltered() {
 // -------------------- Boot --------------------
 (async () => {
   await mountNav("ticket-reports");
+
+  initSessionUI();
   await loadFilters();
-  setDefaultRangeLast7Days();
+
+  // Ensure date inputs are session boundaries if user had blank/changed something
+  const sess = sessionFilter?.value || getSessionLabel();
+  applySessionToDateInputs(fromDate, toDate, sess);
+
   await loadPage();
 })();
 
@@ -898,7 +913,6 @@ clearBtn.addEventListener("click", async () => {
   parentWeekFilter.value = "";
 
   q.value = "";
-  setDefaultRangeLast7Days();
 
   // reset multiselect
   selectedStatuses.clear();
@@ -906,7 +920,10 @@ clearBtn.addEventListener("click", async () => {
   renderStatusMsList();
   renderStatusMsButton();
 
-  // refresh custom selects
+  // reset dates to session boundaries
+  const sess = sessionFilter?.value || getSessionLabel();
+  applySessionToDateInputs(fromDate, toDate, sess);
+
   [
     pocFilter, porFilter, ownerFilter,
     deptFilter, catFilter, subjFilter,
