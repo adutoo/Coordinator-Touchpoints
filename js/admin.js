@@ -4,6 +4,7 @@ import { mountNav } from "./nav.js";
 import { requireAdmin } from "./auth.js";
 import { enhanceSelect, refreshSelect } from "./customSelect.js";
 import { withBusy, setBusyProgress } from "./busy.js";
+import { mountSessionAdminUI } from "./adminSessions.js";
 
 const userMsg = document.getElementById("userMsg");
 const userMgmtMsg = document.getElementById("userMgmtMsg");
@@ -13,8 +14,11 @@ const medMsg = document.getElementById("medMsg");
 const objMsg = document.getElementById("objMsg");
 const ticketMsg = document.getElementById("ticketMsg");
 
-// ✅ NEW
+// Ticket Status
 const statusMsg = document.getElementById("statusMsg");
+
+// Session msg (only used for error display here)
+const sessMsg = document.getElementById("sessMsg");
 
 const irbyMsg = document.getElementById("irbyMsg");
 const deptMsg = document.getElementById("deptMsg");
@@ -68,7 +72,9 @@ function setSelectOptions(selectEl, items, getValue, getLabel) {
     (items || [])
       .map((x) => `<option value="${escapeHtml(getValue(x))}">${escapeHtml(getLabel(x))}</option>`)
       .join("");
-  try { refreshSelect(selectEl); } catch {}
+  try {
+    refreshSelect(selectEl);
+  } catch {}
 }
 
 // -------------------- Boot --------------------
@@ -84,6 +90,10 @@ function setSelectOptions(selectEl, items, getValue, getLabel) {
     const roleSel = document.getElementById("newRole");
     if (roleSel) enhanceSelect(roleSel, { placeholder: roleSel.getAttribute("data-placeholder") || "Select role..." });
 
+    // Sessions dropdown style (important: enhance before mountSessionAdminUI)
+    const sessDefault = document.getElementById("sessDefault");
+    if (sessDefault) enhanceSelect(sessDefault, { placeholder: sessDefault.getAttribute("data-placeholder") || "Select default..." });
+
     // Ticket validation selects style
     const deptReqSub = document.getElementById("deptReqSub");
     if (deptReqSub) enhanceSelect(deptReqSub, { placeholder: deptReqSub.getAttribute("data-placeholder") || "Select..." });
@@ -95,6 +105,16 @@ function setSelectOptions(selectEl, items, getValue, getLabel) {
     if (catDept) enhanceSelect(catDept, { placeholder: catDept.getAttribute("data-placeholder") || "Select...", search: true });
     if (porDept) enhanceSelect(porDept, { placeholder: porDept.getAttribute("data-placeholder") || "Select...", search: true });
 
+    // Mount Sessions admin UI (safe)
+    setBusyProgress(null, "Loading sessions…");
+    try {
+      await mountSessionAdminUI();
+    } catch (e) {
+      console.error("mountSessionAdminUI failed:", e);
+      show(sessMsg, `Sessions UI failed to load: ${String(e?.message || e)}`, true);
+      // Don't throw: admin must still load
+    }
+
     wireCreateAccount();
     wireManageUsers();
     wireFilePicker();
@@ -103,7 +123,7 @@ function setSelectOptions(selectEl, items, getValue, getLabel) {
     wireAddObjective();
     wireAddTicket();
 
-    // ✅ NEW: Ticket Status
+    // Ticket Status
     wireAddTicketStatus();
 
     // Ticket validation wires
@@ -163,7 +183,11 @@ function wireCreateAccount() {
       if (!res.ok) return show(userMsg, `HTTP ${res.status} | ${text}`, true);
 
       let out;
-      try { out = JSON.parse(text); } catch { out = null; }
+      try {
+        out = JSON.parse(text);
+      } catch {
+        out = null;
+      }
       if (!out?.ok) return show(userMsg, out?.msg || "Create failed.", true);
 
       show(userMsg, "Account created ✅");
@@ -240,7 +264,11 @@ function wireManageUsers() {
       if (!res.ok) return show(userMgmtMsg, `HTTP ${res.status} | ${text}`, true);
 
       let out;
-      try { out = JSON.parse(text); } catch { out = null; }
+      try {
+        out = JSON.parse(text);
+      } catch {
+        out = null;
+      }
       if (!out?.ok) return show(userMgmtMsg, out?.msg || "Delete failed.", true);
 
       show(userMgmtMsg, "User deleted ✅");
@@ -278,7 +306,9 @@ async function refreshUsers() {
     return;
   }
 
-  userRows.innerHTML = data.map(p => `
+  userRows.innerHTML = data
+    .map(
+      (p) => `
     <tr>
       <td>${escapeHtml(p.display_name || "")}</td>
       <td>${escapeHtml(p.email || "")}</td>
@@ -289,7 +319,9 @@ async function refreshUsers() {
         </button>
       </td>
     </tr>
-  `).join("");
+  `
+    )
+    .join("");
 }
 
 // -------------------- Excel Upload (Students) --------------------
@@ -347,7 +379,8 @@ function wireFilePicker() {
 
       previewRows.innerHTML = parsedStudents
         .slice(0, 20)
-        .map((s) => `
+        .map(
+          (s) => `
           <tr>
             <td>${escapeHtml(s.child_name)}</td>
             <td>${escapeHtml(s.student_name)}</td>
@@ -355,7 +388,8 @@ function wireFilePicker() {
             <td>${escapeHtml(s.section)}</td>
             <td>${escapeHtml(s.sr_number)}</td>
           </tr>
-        `)
+        `
+        )
         .join("");
 
       uploadBtn.disabled = parsedStudents.length === 0;
@@ -434,7 +468,9 @@ function wireStudentSearch() {
       return;
     }
 
-    stuRows.innerHTML = data.map(s => `
+    stuRows.innerHTML = data
+      .map(
+        (s) => `
       <tr>
         <td>${escapeHtml(s.child_name)}</td>
         <td>${escapeHtml(s.student_name)}</td>
@@ -443,13 +479,15 @@ function wireStudentSearch() {
         <td>${escapeHtml(s.sr_number)}</td>
         <td><button class="btn danger" data-del-stu="${s.id}" data-name="${escapeHtml(s.child_name)}">Delete</button></td>
       </tr>
-    `).join("");
+    `
+      )
+      .join("");
   };
 
   let t = null;
   stuSearch.addEventListener("input", () => {
     clearTimeout(t);
-    t = setTimeout(run, 200); // keep light
+    t = setTimeout(run, 200);
   });
 
   stuRefreshBtn.addEventListener("click", async () => {
@@ -526,7 +564,9 @@ async function refreshMediums() {
   const { data, error } = await sb.from("mediums").select("id,label,time_min,is_active,sort_order").order("sort_order").order("label");
   if (error) return show(medMsg, error.message, true);
 
-  mediumRows.innerHTML = (data || []).map(m => `
+  mediumRows.innerHTML = (data || [])
+    .map(
+      (m) => `
     <tr>
       <td>${escapeHtml(m.label)}</td>
       <td>
@@ -542,9 +582,11 @@ async function refreshMediums() {
         </button>
       </td>
     </tr>
-  `).join("");
+  `
+    )
+    .join("");
 
-  mediumRows.querySelectorAll("button[data-act='saveTime']").forEach(btn => {
+  mediumRows.querySelectorAll("button[data-act='saveTime']").forEach((btn) => {
     btn.addEventListener("click", async () => {
       await runBusy("Saving…", async () => {
         const id = Number(btn.dataset.id);
@@ -557,7 +599,7 @@ async function refreshMediums() {
     });
   });
 
-  mediumRows.querySelectorAll("button[data-act='toggle']").forEach(btn => {
+  mediumRows.querySelectorAll("button[data-act='toggle']").forEach((btn) => {
     btn.addEventListener("click", async () => {
       await runBusy("Updating…", async () => {
         const id = Number(btn.dataset.id);
@@ -603,7 +645,9 @@ async function refreshObjectives() {
   const { data, error } = await sb.from("objectives").select("id,label,is_active,sort_order").order("sort_order").order("label");
   if (error) return show(objMsg, error.message, true);
 
-  objectiveRows.innerHTML = (data || []).map(o => `
+  objectiveRows.innerHTML = (data || [])
+    .map(
+      (o) => `
     <tr>
       <td>${escapeHtml(o.label)}</td>
       <td>${o.is_active ? "Yes" : "No"}</td>
@@ -613,9 +657,11 @@ async function refreshObjectives() {
         </button>
       </td>
     </tr>
-  `).join("");
+  `
+    )
+    .join("");
 
-  objectiveRows.querySelectorAll("button[data-act='toggle']").forEach(btn => {
+  objectiveRows.querySelectorAll("button[data-act='toggle']").forEach((btn) => {
     btn.addEventListener("click", async () => {
       await runBusy("Updating…", async () => {
         const id = Number(btn.dataset.id);
@@ -661,7 +707,9 @@ async function refreshTicketOptions() {
   const { data, error } = await sb.from("ticket_raised_options").select("id,label,is_active,sort_order").order("sort_order").order("label");
   if (error) return show(ticketMsg, error.message, true);
 
-  ticketRows.innerHTML = (data || []).map(t => `
+  ticketRows.innerHTML = (data || [])
+    .map(
+      (t) => `
     <tr>
       <td>${escapeHtml(t.label)}</td>
       <td>${t.is_active ? "Yes" : "No"}</td>
@@ -671,9 +719,11 @@ async function refreshTicketOptions() {
         </button>
       </td>
     </tr>
-  `).join("");
+  `
+    )
+    .join("");
 
-  ticketRows.querySelectorAll("button[data-act='toggle']").forEach(btn => {
+  ticketRows.querySelectorAll("button[data-act='toggle']").forEach((btn) => {
     btn.addEventListener("click", async () => {
       await runBusy("Updating…", async () => {
         const id = Number(btn.dataset.id);
@@ -686,7 +736,7 @@ async function refreshTicketOptions() {
   });
 }
 
-// ✅ NEW: Ticket Statuses (for Ticket Reports dropdown)
+// -------------------- Ticket Statuses --------------------
 function wireAddTicketStatus() {
   const form = document.getElementById("addStatusForm");
   if (!form) return;
@@ -738,7 +788,9 @@ async function refreshTicketStatuses() {
     return;
   }
 
-  statusRows.innerHTML = (data || []).map(s => `
+  statusRows.innerHTML = (data || [])
+    .map(
+      (s) => `
     <tr>
       <td>${escapeHtml(s.label)}</td>
       <td>
@@ -757,9 +809,11 @@ async function refreshTicketStatuses() {
         </button>
       </td>
     </tr>
-  `).join("");
+  `
+    )
+    .join("");
 
-  statusRows.querySelectorAll("button[data-act='saveStatus']").forEach(btn => {
+  statusRows.querySelectorAll("button[data-act='saveStatus']").forEach((btn) => {
     btn.addEventListener("click", async () => {
       await runBusy("Saving…", async () => {
         const id = Number(btn.dataset.id);
@@ -774,7 +828,7 @@ async function refreshTicketStatuses() {
     });
   });
 
-  statusRows.querySelectorAll("button[data-act='toggleStatus']").forEach(btn => {
+  statusRows.querySelectorAll("button[data-act='toggleStatus']").forEach((btn) => {
     btn.addEventListener("click", async () => {
       await runBusy("Updating…", async () => {
         const id = Number(btn.dataset.id);
@@ -833,9 +887,11 @@ async function refreshIrby() {
   ticketIssueRaisedBy = data || [];
 
   const catIrby = document.getElementById("catIrby");
-  setSelectOptions(catIrby, ticketIssueRaisedBy.filter(x => x.is_active), x => x.label, x => x.label);
+  setSelectOptions(catIrby, ticketIssueRaisedBy.filter((x) => x.is_active), (x) => x.label, (x) => x.label);
 
-  irbyRows.innerHTML = (ticketIssueRaisedBy || []).map(x => `
+  irbyRows.innerHTML = (ticketIssueRaisedBy || [])
+    .map(
+      (x) => `
     <tr>
       <td>${escapeHtml(x.label)}</td>
       <td>${escapeHtml(x.sort_order ?? "")}</td>
@@ -846,9 +902,11 @@ async function refreshIrby() {
         </button>
       </td>
     </tr>
-  `).join("");
+  `
+    )
+    .join("");
 
-  irbyRows.querySelectorAll("button[data-act='toggleIrby']").forEach(btn => {
+  irbyRows.querySelectorAll("button[data-act='toggleIrby']").forEach((btn) => {
     btn.addEventListener("click", async () => {
       await runBusy("Updating…", async () => {
         const id = Number(btn.dataset.id);
@@ -887,7 +945,10 @@ function wireAddDept() {
       form.reset();
       const ds = document.getElementById("deptSort");
       if (ds) ds.value = "100";
-      if (deptReqSub) { deptReqSub.value = "false"; refreshSelect(deptReqSub); }
+      if (deptReqSub) {
+        deptReqSub.value = "false";
+        refreshSelect(deptReqSub);
+      }
 
       await refreshDepts();
     });
@@ -911,12 +972,14 @@ async function refreshDepts() {
 
   const catDept = document.getElementById("catDept");
   const porDept = document.getElementById("porDept");
-  const activeDepts = ticketDepartments.filter(x => x.is_active);
+  const activeDepts = ticketDepartments.filter((x) => x.is_active);
 
-  setSelectOptions(catDept, activeDepts, x => x.label, x => x.label);
-  setSelectOptions(porDept, activeDepts, x => x.label, x => x.label);
+  setSelectOptions(catDept, activeDepts, (x) => x.label, (x) => x.label);
+  setSelectOptions(porDept, activeDepts, (x) => x.label, (x) => x.label);
 
-  deptRows.innerHTML = (ticketDepartments || []).map(d => `
+  deptRows.innerHTML = (ticketDepartments || [])
+    .map(
+      (d) => `
     <tr>
       <td>${escapeHtml(d.label)}</td>
       <td>
@@ -934,9 +997,11 @@ async function refreshDepts() {
         </button>
       </td>
     </tr>
-  `).join("");
+  `
+    )
+    .join("");
 
-  deptRows.querySelectorAll("button[data-act='saveDept']").forEach(btn => {
+  deptRows.querySelectorAll("button[data-act='saveDept']").forEach((btn) => {
     btn.addEventListener("click", async () => {
       await runBusy("Saving…", async () => {
         const id = Number(btn.dataset.id);
@@ -952,7 +1017,7 @@ async function refreshDepts() {
     });
   });
 
-  deptRows.querySelectorAll("button[data-act='toggleDept']").forEach(btn => {
+  deptRows.querySelectorAll("button[data-act='toggleDept']").forEach((btn) => {
     btn.addEventListener("click", async () => {
       await runBusy("Updating…", async () => {
         const id = Number(btn.dataset.id);
@@ -1005,7 +1070,9 @@ async function refreshSubjects() {
     return;
   }
 
-  subjRows.innerHTML = (data || []).map(s => `
+  subjRows.innerHTML = (data || [])
+    .map(
+      (s) => `
     <tr>
       <td>${escapeHtml(s.label)}</td>
       <td>${escapeHtml(s.sort_order ?? "")}</td>
@@ -1016,9 +1083,11 @@ async function refreshSubjects() {
         </button>
       </td>
     </tr>
-  `).join("");
+  `
+    )
+    .join("");
 
-  subjRows.querySelectorAll("button[data-act='toggleSubj']").forEach(btn => {
+  subjRows.querySelectorAll("button[data-act='toggleSubj']").forEach((btn) => {
     btn.addEventListener("click", async () => {
       await runBusy("Updating…", async () => {
         const id = Number(btn.dataset.id);
@@ -1055,7 +1124,7 @@ function wireAddCategory() {
         department,
         label,
         is_active: true,
-        sort_order
+        sort_order,
       });
 
       if (error) return show(catMsg, error.message, true);
@@ -1088,7 +1157,9 @@ async function refreshCategories() {
     return;
   }
 
-  catRows.innerHTML = (data || []).map(c => `
+  catRows.innerHTML = (data || [])
+    .map(
+      (c) => `
     <tr>
       <td>${escapeHtml(c.issue_raised_by)}</td>
       <td>${escapeHtml(c.department)}</td>
@@ -1101,9 +1172,11 @@ async function refreshCategories() {
         </button>
       </td>
     </tr>
-  `).join("");
+  `
+    )
+    .join("");
 
-  catRows.querySelectorAll("button[data-act='toggleCat']").forEach(btn => {
+  catRows.querySelectorAll("button[data-act='toggleCat']").forEach((btn) => {
     btn.addEventListener("click", async () => {
       await runBusy("Updating…", async () => {
         const id = Number(btn.dataset.id);
@@ -1131,9 +1204,7 @@ function wireAddPocMap() {
 
       if (!reporter_email || !poc_email) return show(pocMsg, "Both emails are required.", true);
 
-      const { error } = await sb
-        .from("ticket_poc_map")
-        .upsert({ reporter_email, poc_email }, { onConflict: "reporter_email" });
+      const { error } = await sb.from("ticket_poc_map").upsert({ reporter_email, poc_email }, { onConflict: "reporter_email" });
 
       if (error) return show(pocMsg, error.message, true);
 
@@ -1157,7 +1228,9 @@ async function refreshPocMap() {
     return;
   }
 
-  pocRows.innerHTML = (data || []).map(r => `
+  pocRows.innerHTML = (data || [])
+    .map(
+      (r) => `
     <tr>
       <td>${escapeHtml(r.reporter_email)}</td>
       <td>${escapeHtml(r.poc_email)}</td>
@@ -1165,9 +1238,11 @@ async function refreshPocMap() {
         <button class="btn danger" data-act="delPoc" data-reporter="${escapeHtml(r.reporter_email)}">Delete</button>
       </td>
     </tr>
-  `).join("");
+  `
+    )
+    .join("");
 
-  pocRows.querySelectorAll("button[data-act='delPoc']").forEach(btn => {
+  pocRows.querySelectorAll("button[data-act='delPoc']").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const reporter = btn.getAttribute("data-reporter");
       if (!reporter) return;
@@ -1201,9 +1276,7 @@ function wireAddPorMap() {
       if (!department) return show(porMsg, "Select department.", true);
       if (!por_email) return show(porMsg, "POR email is required.", true);
 
-      const { error } = await sb
-        .from("ticket_por_map")
-        .upsert({ department, por_email }, { onConflict: "department" });
+      const { error } = await sb.from("ticket_por_map").upsert({ department, por_email }, { onConflict: "department" });
 
       if (error) return show(porMsg, error.message, true);
 
@@ -1227,7 +1300,9 @@ async function refreshPorMap() {
     return;
   }
 
-  porRows.innerHTML = (data || []).map(r => `
+  porRows.innerHTML = (data || [])
+    .map(
+      (r) => `
     <tr>
       <td>${escapeHtml(r.department)}</td>
       <td>${escapeHtml(r.por_email)}</td>
@@ -1235,9 +1310,11 @@ async function refreshPorMap() {
         <button class="btn danger" data-act="delPor" data-dept="${escapeHtml(r.department)}">Delete</button>
       </td>
     </tr>
-  `).join("");
+  `
+    )
+    .join("");
 
-  porRows.querySelectorAll("button[data-act='delPor']").forEach(btn => {
+  porRows.querySelectorAll("button[data-act='delPor']").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const dept = btn.getAttribute("data-dept");
       if (!dept) return;
@@ -1257,7 +1334,6 @@ async function refreshPorMap() {
 
 // -------------------- Refresh helpers --------------------
 async function refreshAll() {
-  // sequential so popup message makes sense
   setBusyProgress(5, "Loading users…");
   await refreshUsers();
 
@@ -1287,7 +1363,6 @@ async function refreshAll() {
   setBusyProgress(100, "Done");
 }
 
-// (these two were in your file elsewhere; kept calls intact)
 async function refreshStudentsCount() {
   const uploadMeta = document.getElementById("uploadMeta");
   const { count, error } = await sb.from("students").select("id", { count: "exact", head: true });
