@@ -3,10 +3,18 @@ import { sb } from "./supabaseClient.js";
 import { mountNav } from "./nav.js";
 import { enhanceSelect, refreshSelect } from "./customSelect.js";
 import { withBusy, setBusyProgress } from "./busy.js";
+import {
+  listSessions,
+  getSessionLabel,
+  setSessionLabel,
+  getSessionRange,
+  applySessionToDateInputs,
+  clampRangeToSession,
+} from "./session.js";
 
+const sessionFilter = document.getElementById("sessionFilter");
 const coordFilter = document.getElementById("coordFilter");
-const objectiveFilter = document.getElementById("objectiveFilter"); // ✅ NEW
-
+const objectiveFilter = document.getElementById("objectiveFilter");
 const fromDate = document.getElementById("fromDate");
 const toDate = document.getElementById("toDate");
 const q = document.getElementById("q");
@@ -42,17 +50,15 @@ function hideMsg() { msg.style.display = "none"; }
 function td(v) { return (v ?? "").toString(); }
 function pad2(n) { return String(n).padStart(2, "0"); }
 
-// Excel-safe: YYYY-MM-DD HH:mm:ss
 function fmtTS(iso) {
   if (!iso) return "";
   const d = new Date(iso);
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 }
 
-// ✅ robust date input parsing (supports YYYY-MM-DD and DD-MM-YYYY)
+// supports YYYY-MM-DD and DD-MM-YYYY
 function parseDateInput(s) {
   if (!s) return null;
-
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
     const [y, m, d] = s.split("-").map(Number);
     return { y, m, d };
@@ -64,64 +70,59 @@ function parseDateInput(s) {
   return null;
 }
 
+// start of day
 function toStartISO(val) {
   const p = parseDateInput(val);
   if (!p) return null;
   return new Date(p.y, p.m - 1, p.d, 0, 0, 0, 0).toISOString();
 }
 
-function toEndISO(val) {
-  const p = parseDateInput(val);
-  if (!p) return null;
-  return new Date(p.y, p.m - 1, p.d, 23, 59, 59, 999).toISOString();
-}
-
-function setDefaultRangeLast7Days() {
-  const now = new Date();
-  const to = new Date(now);
-  const from = new Date(now);
-  from.setDate(from.getDate() - 6);
-
-  const f = `${from.getFullYear()}-${pad2(from.getMonth() + 1)}-${pad2(from.getDate())}`;
-  const t = `${to.getFullYear()}-${pad2(to.getMonth() + 1)}-${pad2(to.getDate())}`;
-
-  fromDate.value = f;
-  toDate.value = t;
-}
-
-function setRangeToday() {
-  const now = new Date();
-  const d = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
-  fromDate.value = d;
-  toDate.value = d;
-}
-
-function setRangeThisWeek() {
-  const now = new Date();
-  const x = new Date(now);
+// ---- Quick ranges use endExclusive (tomorrow 00:00) so "Today" includes full day
+function startOfDay(d) {
+  const x = new Date(d);
   x.setHours(0, 0, 0, 0);
+  return x;
+}
+function addDays(d, days) {
+  const x = new Date(d);
+  x.setDate(x.getDate() + days);
+  return x;
+}
+function startOfWeekMonday(d) {
+  const x = startOfDay(d);
   const day = x.getDay(); // Sun=0
   const diff = (day + 6) % 7; // Monday=0
-  x.setDate(x.getDate() - diff);
-
-  const f = `${x.getFullYear()}-${pad2(x.getMonth() + 1)}-${pad2(x.getDate())}`;
-  const t = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
-
-  fromDate.value = f;
-  toDate.value = t;
+  return addDays(x, -diff);
 }
-
+function setRangeToday() {
+  const now = new Date();
+  const from = startOfDay(now);
+  const to = addDays(from, 1); // endExclusive
+  const sess = sessionFilter?.value || getSessionLabel();
+  const clamped = clampRangeToSession(from, to, sess);
+  fromDate.value = `${clamped.from.getFullYear()}-${pad2(clamped.from.getMonth() + 1)}-${pad2(clamped.from.getDate())}`;
+  toDate.value = `${clamped.to.getFullYear()}-${pad2(clamped.to.getMonth() + 1)}-${pad2(clamped.to.getDate())}`;
+}
+function setRangeThisWeek() {
+  const now = new Date();
+  const from = startOfWeekMonday(now);
+  const to = addDays(startOfDay(now), 1); // endExclusive tomorrow
+  const sess = sessionFilter?.value || getSessionLabel();
+  const clamped = clampRangeToSession(from, to, sess);
+  fromDate.value = `${clamped.from.getFullYear()}-${pad2(clamped.from.getMonth() + 1)}-${pad2(clamped.from.getDate())}`;
+  toDate.value = `${clamped.to.getFullYear()}-${pad2(clamped.to.getMonth() + 1)}-${pad2(clamped.to.getDate())}`;
+}
 function setRangeThisMonth() {
   const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-
-  const f = `${monthStart.getFullYear()}-${pad2(monthStart.getMonth() + 1)}-${pad2(monthStart.getDate())}`;
-  const t = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
-
-  fromDate.value = f;
-  toDate.value = t;
+  const from = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+  const to = addDays(startOfDay(now), 1); // endExclusive tomorrow
+  const sess = sessionFilter?.value || getSessionLabel();
+  const clamped = clampRangeToSession(from, to, sess);
+  fromDate.value = `${clamped.from.getFullYear()}-${pad2(clamped.from.getMonth() + 1)}-${pad2(clamped.from.getDate())}`;
+  toDate.value = `${clamped.to.getFullYear()}-${pad2(clamped.to.getMonth() + 1)}-${pad2(clamped.to.getDate())}`;
 }
 
+// -------------------- Query builder (session clamps the date range) --------------------
 function buildBaseQuery({ includeCount = false } = {}) {
   let query = sb
     .from("touchpoints")
@@ -135,16 +136,26 @@ function buildBaseQuery({ includeCount = false } = {}) {
     .not("objective", "is", null).neq("objective", "");
 
   if (coordFilter?.value) query = query.eq("owner_name", coordFilter.value);
-
-  // ✅ Objective filter
   if (objectiveFilter?.value) query = query.eq("objective", objectiveFilter.value);
 
-  const start = toStartISO(fromDate.value);
-  const end = toEndISO(toDate.value);
-  if (start) query = query.gte("touch_timestamp", start);
-  if (end) query = query.lte("touch_timestamp", end);
+  const sessLabel = sessionFilter?.value || getSessionLabel();
+  const sess = getSessionRange(sessLabel);
 
-  const text = q.value.trim();
+  // Date range: treat To as endExclusive
+  const startISO = toStartISO(fromDate?.value);
+  const endExclusiveISO = toStartISO(toDate?.value);
+
+  // If user empties dates, fallback to session boundaries
+  const start = startISO ? new Date(startISO) : new Date(sess.start);
+  const end = endExclusiveISO ? new Date(endExclusiveISO) : new Date(sess.end);
+
+  // Clamp inside session
+  const clamped = clampRangeToSession(start, end, sessLabel);
+
+  query = query.gte("touch_timestamp", clamped.from.toISOString());
+  query = query.lt("touch_timestamp", clamped.to.toISOString());
+
+  const text = (q?.value || "").trim();
   if (text) {
     const esc = text.replace(/,/g, " ");
     query = query.or(
@@ -182,7 +193,6 @@ async function loadCoordinatorsRaw() {
 async function loadObjectivesRaw() {
   if (!objectiveFilter) return;
 
-  // Prefer objectives master table (admin-managed)
   const { data, error } = await sb
     .from("objectives")
     .select("label,is_active,sort_order")
@@ -192,13 +202,11 @@ async function loadObjectivesRaw() {
 
   if (error) throw error;
 
-  const labels = (data || []).map(x => x.label).filter(Boolean);
-
   objectiveFilter.innerHTML =
     `<option value="">All</option>` +
-    labels.map(l => `<option value="${l}">${l}</option>`).join("");
+    (data || []).map(o => `<option value="${o.label}">${o.label}</option>`).join("");
 
-  enhanceSelect(objectiveFilter, { placeholder: "All objectives", search: true, searchThreshold: 0 });
+  enhanceSelect(objectiveFilter, { placeholder: "All objectives", search: true });
   refreshSelect(objectiveFilter);
 }
 
@@ -323,7 +331,7 @@ async function exportAllFilteredRaw() {
   show(`Exported ${rows.length} rows ✅`);
 }
 
-// ---------- PUBLIC wrappers (show popup progress) ----------
+// ---------- PUBLIC wrappers ----------
 async function loadPage() {
   await withBusy("Loading report…", async () => {
     setBusyProgress(null, "Loading data…");
@@ -345,7 +353,7 @@ async function exportAllFiltered() {
   });
 }
 
-// ✅ Delete handler with verification + progress popup
+// ✅ Delete handler (admin only)
 document.addEventListener("click", async (e) => {
   const btn = e.target.closest("button[data-del]");
   if (!btn) return;
@@ -379,6 +387,31 @@ document.addEventListener("click", async (e) => {
   });
 });
 
+// ---------- Session UI ----------
+function initSessionUI() {
+  if (!sessionFilter) return;
+
+  const sessions = listSessions({ past: 6, future: 1 });
+  sessionFilter.innerHTML = sessions.map(s => `<option value="${s}">${s}</option>`).join("");
+
+  const cur = getSessionLabel();
+  sessionFilter.value = cur;
+
+  enhanceSelect(sessionFilter, { placeholder: "Select session...", search: true });
+  refreshSelect(sessionFilter);
+
+  // Set From/To as session boundaries by default
+  applySessionToDateInputs(fromDate, toDate, cur);
+
+  sessionFilter.addEventListener("change", async () => {
+    const val = sessionFilter.value;
+    setSessionLabel(val);
+    applySessionToDateInputs(fromDate, toDate, val);
+    page = 0;
+    await loadPage();
+  });
+}
+
 // ---------- Boot ----------
 (async () => {
   await mountNav("reports");
@@ -387,6 +420,9 @@ document.addEventListener("click", async (e) => {
     setBusyProgress(null, "Checking access…");
     isAdmin = await detectAdminRaw();
 
+    setBusyProgress(null, "Loading session…");
+    initSessionUI();
+
     setBusyProgress(null, "Loading coordinators…");
     await loadCoordinatorsRaw();
 
@@ -394,7 +430,6 @@ document.addEventListener("click", async (e) => {
     await loadObjectivesRaw();
 
     setBusyProgress(null, "Loading report…");
-    setDefaultRangeLast7Days();
     await loadPageRaw();
   }).catch((err) => {
     console.error(err);
@@ -415,7 +450,11 @@ clearBtn.addEventListener("click", async () => {
   }
 
   q.value = "";
-  setDefaultRangeLast7Days();
+
+  // Reset to session boundaries (NOT last 7 days)
+  const sess = sessionFilter?.value || getSessionLabel();
+  applySessionToDateInputs(fromDate, toDate, sess);
+
   page = 0;
   hideMsg();
   await loadPage();
