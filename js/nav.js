@@ -4,7 +4,6 @@ import { sb } from "./supabaseClient.js";
 
 async function getMyProfileSafe(userId) {
   // profiles table: id, email, display_name, created_at, role
-  // ✅ Fix: use id = auth.uid() (not user_id)
   const { data, error } = await sb
     .from("profiles")
     .select("id,email,display_name,role,created_at")
@@ -46,8 +45,13 @@ export async function mountNav(activePage) {
         ${link("dashboard.html", "dashboard", "Dashboard")}
         ${link("entry.html", "entry", "New Entry")}
         ${link("reports.html", "reports", "Reports")}
+
         ${link("ticket_entry.html", "ticket_entry", "Ticket Entry")}
         ${link("ticket_reports.html", "ticket_reports", "Ticket Reports")}
+
+        <!-- ✅ New Call page -->
+        ${link("callReports.html", "call_reports", "Call Reports")}
+
         ${isAdmin ? link("admin.html", "admin", "Admin") : ""}
         <button id="logoutBtn" class="btn danger">Logout</button>
       </div>
