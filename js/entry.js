@@ -13,9 +13,6 @@ const resetBtn = document.getElementById("resetBtn");
 const msg = document.getElementById("msg");
 
 const TICKETS_TABLE = "tickets";
-
-// IMPORTANT: Use safe select to avoid "column does not exist" breaking ticket loading.
-// We'll read what we need if present.
 const TICKET_SELECT_SAFE = "ticket_number,department,category,subject,student_name,student_child_name,raised_at";
 
 let students = [];
@@ -24,8 +21,124 @@ let mediums = [];
 let objectives = [];
 let ticketOptions = [];
 
-const ticketsCache = new Map(); // key -> list
+const ticketsCache = new Map();
 
+// -------------------- Call Prefill (from Call Reports) --------------------
+const __URL = new URL(window.location.href);
+const __FROM_CALL = __URL.searchParams.get("fromCall") === "1";
+
+function readCallPrefill() {
+  try {
+    const raw = sessionStorage.getItem("callPrefill");
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+function clearCallPrefill() {
+  try {
+    sessionStorage.removeItem("callPrefill");
+  } catch {}
+}
+
+function splitSummary(summary) {
+  const s = String(summary || "");
+  const up = s.toUpperCase();
+  const pIdx = up.indexOf("POSITIVES");
+  const sIdx = up.indexOf("SUGGESTIONS");
+  let positives = "";
+  let suggestions = "";
+
+  if (pIdx >= 0 && sIdx >= 0) {
+    positives = s.slice(pIdx, sIdx).trim();
+    suggestions = s.slice(sIdx).trim();
+  } else {
+    suggestions = s.trim();
+  }
+
+  positives = positives.replace(/^POSITIVES\s*:?\s*/i, "").trim();
+  suggestions = suggestions.replace(/^SUGGESTIONS\s*:?\s*/i, "").trim();
+  return { positives, suggestions };
+}
+
+function normalizeCallType(v) {
+  const s = String(v || "").trim().toUpperCase();
+  if (!s) return "";
+  // accept variants
+  if (s.includes("OUT")) return "OUTGOING";
+  if (s.includes("IN")) return "INCOMING";
+  return s;
+}
+
+function desiredMediumFromCallType(callType) {
+  const ct = normalizeCallType(callType);
+  if (ct === "INCOMING") return "Inbound Call";
+  if (ct === "OUTGOING") return "Outbound Call";
+  return "";
+}
+
+function findMediumLabelCaseInsensitive(label) {
+  const want = String(label || "").trim().toLowerCase();
+  if (!want) return "";
+  const hit = (mediums || []).find((m) => String(m?.label || "").trim().toLowerCase() === want);
+  return hit?.label || "";
+}
+
+let __callPrefill = __FROM_CALL ? readCallPrefill() : null;
+
+// Apply prefill AFTER first block exists
+function tryApplyPrefillToFirstBlock() {
+  if (!__FROM_CALL) return false;
+  if (!__callPrefill) return false;
+
+  const block = entriesEl?.querySelector(".tp-entry");
+  if (!block) return false;
+
+  const refs = blockRefs(block);
+
+  // Support both {positives,suggestions} and {summary}
+  let pos = String(__callPrefill.positives ?? "").trim();
+  let sug = String(__callPrefill.suggestions ?? "").trim();
+
+  if ((!pos && !sug) && __callPrefill.summary) {
+    const out = splitSummary(__callPrefill.summary);
+    pos = out.positives;
+    sug = out.suggestions;
+  }
+
+  if (refs.positives && pos) refs.positives.value = pos;
+  if (refs.suggestion && sug) refs.suggestion.value = sug;
+
+  // ✅ Medium mapping by call_type
+  // INCOMING -> Inbound Call, OUTGOING -> Outbound Call
+  const desired = desiredMediumFromCallType(__callPrefill.call_type);
+  const mediumLabel = findMediumLabelCaseInsensitive(desired);
+  if (refs.medium && mediumLabel) {
+    refs.medium.value = mediumLabel;
+    refs.medium.dispatchEvent(new Event("change", { bubbles: true }));
+    try { refreshSelect(refs.medium); } catch {}
+  }
+
+  // Optional: if you ever pass child_name too
+  if (__callPrefill.child_name && refs.child) {
+    refs.child.value = __callPrefill.child_name;
+    refs.child.dispatchEvent(new Event("change", { bubbles: true }));
+    try { refreshSelect(refs.child); } catch {}
+  }
+
+  if (refs.positives) refs.positives.dispatchEvent(new Event("input", { bubbles: true }));
+  if (refs.suggestion) refs.suggestion.dispatchEvent(new Event("input", { bubbles: true }));
+
+  console.log("[callPrefill] applied into first entry block:", __callPrefill);
+
+  // Clear only after apply
+  __callPrefill = null;
+  clearCallPrefill();
+  return true;
+}
+
+// -------------------- UI Msg helpers --------------------
 function show(text, isError = false) {
   if (!msg) return;
   msg.style.display = "block";
@@ -33,11 +146,17 @@ function show(text, isError = false) {
   msg.style.color = isError ? "rgba(255,200,210,0.95)" : "rgba(255,255,255,0.72)";
   msg.textContent = text;
 }
-function hideMsg() { if (msg) msg.style.display = "none"; }
+function hideMsg() {
+  if (msg) msg.style.display = "none";
+}
 
-function pad2(n) { return String(n).padStart(2, "0"); }
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
 function fmtLocalTS(d) {
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(
+    d.getMinutes()
+  )}:${pad2(d.getSeconds())}`;
 }
 
 function escText(s) {
@@ -73,20 +192,25 @@ function isoWeekNumber(dateObj) {
   const dayNum = d.getUTCDay() || 7;
   d.setUTCDate(d.getUTCDate() + 4 - dayNum);
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
 }
 
 function getMediumTimeMin(label) {
-  const m = mediums.find(x => x.label === label);
+  const m = mediums.find((x) => x.label === label);
   return Math.max(1, Number(m?.time_min ?? 1));
 }
 
 function buildOptions(list, valueKey = "label", labelKey = "label") {
-  return `<option value=""></option>` + list.map(x => {
-    const v = escAttr(x[valueKey]);
-    const t = escText(x[labelKey]);
-    return `<option value="${v}">${t}</option>`;
-  }).join("");
+  return (
+    `<option value=""></option>` +
+    list
+      .map((x) => {
+        const v = escAttr(x[valueKey]);
+        const t = escText(x[labelKey]);
+        return `<option value="${v}">${t}</option>`;
+      })
+      .join("")
+  );
 }
 
 function blockRefs(block) {
@@ -100,10 +224,7 @@ function blockRefs(block) {
 
     ticketRaised: q('select[data-field="ticketRaised"]'),
 
-    ticketNumberHost:
-      q('select[data-field="ticketNumber"]') ||
-      q('input[data-field="ticketNumber"]') ||
-      null,
+    ticketNumberHost: q('select[data-field="ticketNumber"]') || q('input[data-field="ticketNumber"]') || null,
 
     ticketDept: q('input[data-field="ticketDept"]'),
     ticketSubject: q('input[data-field="ticketSubject"]') || null,
@@ -195,20 +316,24 @@ function installTicketCombo(refs) {
     }
   }
 
-  const realInput = (host.tagName === "INPUT") ? host : input;
+  const realInput = host.tagName === "INPUT" ? host : input;
 
   const combo = { wrap, input: realInput, list, tickets: [] };
   host._ticketCombo = combo;
   refs.ticketCombo = combo;
 
-  function closeList() { list.style.display = "none"; }
-  function openList() { list.style.display = "block"; }
+  function closeList() {
+    list.style.display = "none";
+  }
+  function openList() {
+    list.style.display = "block";
+  }
 
   function metaLine(t) {
     const dept = (t.department || "").trim() || "—";
     const subj = (t.subject || "").trim() || "—";
-    const cat  = (t.category || "").trim() || "—";
-    const stu  = (t.student_child_name || t.student_name || "").trim() || "—";
+    const cat = (t.category || "").trim() || "—";
+    const stu = (t.student_child_name || t.student_name || "").trim() || "—";
     return `${dept} / ${subj} / ${cat} — ${stu}`;
   }
 
@@ -218,7 +343,7 @@ function installTicketCombo(refs) {
 
     const filtered = !f
       ? items
-      : items.filter(t => {
+      : items.filter((t) => {
           const a = String(t.ticket_number || "").toLowerCase();
           const b = String(t.department || "").toLowerCase();
           const c = String(t.subject || "").toLowerCase();
@@ -232,18 +357,22 @@ function installTicketCombo(refs) {
       return;
     }
 
-    list.innerHTML = filtered.map(t => `
+    list.innerHTML = filtered
+      .map(
+        (t) => `
       <div data-ticket="${escAttr(t.ticket_number)}"
            style="padding:10px 12px;border-radius:12px;cursor:pointer;border:1px solid rgba(255,255,255,0.06);margin:6px 0;">
         <div style="font-weight:700;opacity:.95;">${escText(t.ticket_number)}</div>
         <div style="font-size:12px;opacity:.72;white-space:normal;">${escText(metaLine(t))}</div>
       </div>
-    `).join("");
+    `
+      )
+      .join("");
   }
 
   function fillMetaFromInput() {
     const val = (combo.input.value || "").trim();
-    const hit = (combo.tickets || []).find(t => String(t.ticket_number) === val);
+    const hit = (combo.tickets || []).find((t) => String(t.ticket_number) === val);
 
     if (refs.ticketDept) refs.ticketDept.value = hit?.department ?? "";
     if (refs.ticketSubject) refs.ticketSubject.value = hit?.subject ?? "";
@@ -285,18 +414,16 @@ function installTicketCombo(refs) {
   return combo;
 }
 
-// -------------------- Ticket Fetch (FIXED) --------------------
+// -------------------- Ticket Fetch --------------------
 function cacheKeyFor(childName, studentName) {
   return (childName || "").trim() || (studentName || "").trim() || "";
 }
 
 async function queryTicketsAttempt({ field, op, value }) {
   let q = sb.from(TICKETS_TABLE).select(TICKET_SELECT_SAFE);
-
   if (op === "eq") q = q.eq(field, value);
   if (op === "ilike") q = q.ilike(field, value);
 
-  // prefer newest first
   q = q.order("raised_at", { ascending: false }).order("ticket_number", { ascending: false }).limit(200);
 
   const { data, error } = await q;
@@ -309,7 +436,6 @@ async function getTicketsForStudent({ childName, studentName }) {
   if (ticketsCache.has(key)) return ticketsCache.get(key);
 
   return await withBusy("Loading tickets…", async () => {
-    // Try multiple ways so it works even if data format differs slightly.
     const attempts = [];
 
     if (childName) {
@@ -324,17 +450,14 @@ async function getTicketsForStudent({ childName, studentName }) {
       const { data, error } = await queryTicketsAttempt(a);
 
       if (error) {
-        // ✅ show real reason instead of silently failing
         console.error("Tickets fetch error:", error);
         show(`Tickets not loading: ${error.message}`, true);
-
-        // If it's RLS / permission, stop trying further.
         ticketsCache.set(key, []);
         return [];
       }
 
       if (data?.length) {
-        const list = data.filter(r => r?.ticket_number);
+        const list = data.filter((r) => r?.ticket_number);
         ticketsCache.set(key, list);
         return list;
       }
@@ -362,9 +485,7 @@ async function updateTicketsForChild(refs, keepTyped = "") {
 
   if (!childName && !studentName) return;
 
-  // clear any old message only when we actually start loading
   hideMsg();
-
   const tickets = await getTicketsForStudent({ childName, studentName });
   combo.tickets = tickets;
 }
@@ -385,9 +506,11 @@ function createBlock(cloneFrom = null) {
   const node = tpl.content.firstElementChild.cloneNode(true);
   const refs = blockRefs(node);
 
-  refs.child.innerHTML = `<option value=""></option>` + students.map(s =>
-    `<option value="${escAttr(s.child_name)}">${escText(s.child_name)}</option>`
-  ).join("");
+  refs.child.innerHTML =
+    `<option value=""></option>` +
+    students
+      .map((s) => `<option value="${escAttr(s.child_name)}">${escText(s.child_name)}</option>`)
+      .join("");
 
   refs.medium.innerHTML = buildOptions(mediums, "label", "label");
   refs.objective.innerHTML = buildOptions(objectives, "label", "label");
@@ -439,8 +562,11 @@ function createBlock(cloneFrom = null) {
   if (refs.child.value) {
     updateTicketsForChild(refs, clonedTicket).catch(console.error);
   }
+
+  return node;
 }
 
+// -------------------- Boot --------------------
 (async () => {
   await mountNav("entry");
   hideMsg();
@@ -457,7 +583,7 @@ function createBlock(cloneFrom = null) {
       ]);
 
       students = stu || [];
-      studentsByChild = new Map(students.map(s => [s.child_name, s]));
+      studentsByChild = new Map(students.map((s) => [s.child_name, s]));
 
       mediums = med.data || [];
       objectives = obj.data || [];
@@ -465,6 +591,19 @@ function createBlock(cloneFrom = null) {
     });
 
     createBlock(null);
+
+    // ✅ Apply prefill after first block exists
+    if (__FROM_CALL && __callPrefill) {
+      let applied = tryApplyPrefillToFirstBlock();
+      if (!applied) {
+        for (let i = 0; i < 20; i++) {
+          await new Promise((r) => setTimeout(r, 100));
+          applied = tryApplyPrefillToFirstBlock();
+          if (applied) break;
+        }
+      }
+    }
+
     show(`Loaded ${students.length} students ✅`);
     setTimeout(hideMsg, 1200);
   } catch (e) {
@@ -473,6 +612,7 @@ function createBlock(cloneFrom = null) {
   }
 })();
 
+// -------------------- UI actions --------------------
 addEntryBtn.addEventListener("click", () => {
   const blocks = Array.from(entriesEl.querySelectorAll(".tp-entry"));
   const last = blocks[blocks.length - 1] || null;
@@ -483,8 +623,13 @@ resetBtn.addEventListener("click", () => {
   hideMsg();
   entriesEl.innerHTML = "";
   createBlock(null);
+
+  if (__FROM_CALL && __callPrefill) {
+    tryApplyPrefillToFirstBlock();
+  }
 });
 
+// -------------------- Save --------------------
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   hideMsg();
@@ -525,9 +670,7 @@ form.addEventListener("submit", async (e) => {
     const timeText = `${time_min} min`;
 
     const comments_concat =
-      positives && suggestion ? `${positives}\n${suggestion}` :
-      positives ? positives :
-      suggestion ? suggestion : "";
+      positives && suggestion ? `${positives}\n${suggestion}` : positives ? positives : suggestion ? suggestion : "";
 
     payloads.push({
       child_name,
@@ -566,7 +709,7 @@ form.addEventListener("submit", async (e) => {
   await withBusy(`Saving ${payloads.length} entries…`, async () => {
     const { error } = await sb.from("touchpoints").insert(payloads);
     if (error) throw error;
-  }).catch(err => {
+  }).catch((err) => {
     show(err?.message || String(err), true);
     throw err;
   });
