@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Coordinator Touchpoints — Call Reports</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <div id="navHolder"></div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;">
+        <div>
+          <h2 style="margin:0;">Call Reports</h2>
+          <div id="metaLine" class="muted" style="margin-top:6px;">Loading…</div>
+        </div>
+
+        <div class="row" style="gap:10px;flex-wrap:wrap;align-items:center;">
+          <input id="searchBox" class="input" style="min-width:260px;"
+                 placeholder="Search parent / contact / summary…" />
+          <button id="reloadBtn" class="btn" type="button">Reload</button>
+        </div>
+      </div>
+
+      <!-- ✅ Filters -->
+      <div class="form" style="margin-top:14px;">
+        <div class="field span3">
+          <label>Coordinator</label>
+          <select id="fltCoordinator" data-placeholder="All coordinators"></select>
+        </div>
+
+        <div class="field span3">
+          <label>Call Type</label>
+          <select id="fltCallType" data-placeholder="All types">
+            <option value=""></option>
+            <option value="INCOMING">INCOMING</option>
+            <option value="OUTGOING">OUTGOING</option>
+            <option value="MISSED">MISSED</option>
+          </select>
+        </div>
+
+        <div class="field span3">
+          <label>Date From</label>
+          <input id="fltFrom" type="date" />
+        </div>
+
+        <div class="field span3">
+          <label>Date To</label>
+          <input id="fltTo" type="date" />
+        </div>
+
+        <div class="field span12">
+          <div class="row" style="gap:10px;flex-wrap:wrap;">
+            <button id="applyFiltersBtn" class="btn primary" type="button">Apply Filters</button>
+            <button id="clearFiltersBtn" class="btn" type="button">Clear</button>
+            <button id="exportBtn" class="btn" type="button">Export Excel</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="reportMsg" class="notice" style="display:none;margin-top:12px;"></div>
+
+      <div class="tablewrap maxh" style="margin-top:12px;">
+        <table>
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Parent Number</th>
+              <th>Coordinator Number</th>
+              <th>Call Start</th>
+              <th>Call End</th>
+              <th>Duration (s)</th>
+              <th>Contact Name</th>
+              <th>Call Type</th>
+              <th>Call Summary</th>
+              <th>Call Transcript</th>
+              <th>Coordinator</th>
+              <th>Day</th>
+              <th>Week</th>
+              <th>Month</th>
+              <th>Year</th>
+              <th style="text-align:right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+
+      <div class="row" style="justify-content:flex-end;gap:10px;align-items:center;margin-top:12px;">
+        <button id="prevBtn" class="btn" type="button">Prev</button>
+        <div id="pageMeta" class="muted">Page 1 / 1</div>
+        <button id="nextBtn" class="btn" type="button">Next</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script type="module" src="js/callReports.js"></script>
+</body>
+</html>
