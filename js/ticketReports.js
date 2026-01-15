@@ -55,19 +55,6 @@ const statusMsList = document.getElementById("statusMsList");
 const statusMsAll = document.getElementById("statusMsAll");
 const statusMsClear = document.getElementById("statusMsClear");
 
-
-const sessionLabel = document.getElementById("session")?.value || ""; // use your actual session select id
-const fromEl = document.getElementById("from"); // use your actual From input id
-const toEl = document.getElementById("to");     // use your actual To input id
-
-const { fromISO, toISO } = clampRangeToSession({
-  from: fromEl,
-  to: toEl,
-  sessionLabel,
-  setIfEmpty: true
-});
-
-
 const PAGE_SIZE = 50;
 let page = 0;
 let totalCount = 0;
@@ -76,6 +63,13 @@ let totalCount = 0;
 let statusOptions = []; // labels
 let selectedStatuses = new Set(); // labels
 let includeBlankStatus = false; // "(Blank)"
+
+// ownership options for inline dropdown
+let ownershipOptions = []; // distinct change_ownership values from tickets
+
+// current user context (for edit permission)
+let __meEmail = "";
+let __isAdmin = false;
 
 // -------------------- Busy wrapper (avoid nested popups) --------------------
 let __busyDepth = 0;
@@ -96,6 +90,16 @@ function show(text, isError = false) {
   msg.textContent = text;
 }
 function hideMsg() { msg.style.display = "none"; }
+
+function escText(s) {
+  return String(s ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+function escAttr(s) {
+  return escText(s).replaceAll('"', "&quot;");
+}
 function td(v) { return (v ?? "").toString(); }
 
 function pad(n) { return String(n).padStart(2, "0"); }
@@ -124,7 +128,7 @@ function initSessionUI() {
   if (!sessionFilter) return;
 
   const sessions = listSessions({ past: 6, future: 1 });
-  sessionFilter.innerHTML = sessions.map(s => `<option value="${s}">${s}</option>`).join("");
+  sessionFilter.innerHTML = sessions.map(s => `<option value="${escAttr(s)}">${escText(s)}</option>`).join("");
 
   const cur = getSessionLabel();
   sessionFilter.value = cur;
@@ -200,9 +204,9 @@ function renderStatusMsList() {
   statusMsList.innerHTML = items.map(it => {
     const checked = it.key === "__blank__" ? includeBlankStatus : selectedStatuses.has(it.key);
     return `
-      <div class="ms-item" data-key="${it.key}">
+      <div class="ms-item" data-key="${escAttr(it.key)}">
         <input type="checkbox" ${checked ? "checked" : ""} />
-        <div>${it.label}</div>
+        <div>${escText(it.label)}</div>
       </div>
     `;
   }).join("");
@@ -268,7 +272,7 @@ async function loadFilters() {
 
     deptFilter.innerHTML =
       `<option value="">All</option>` +
-      (dR.data || []).map(x => `<option value="${x.label}">${x.label}</option>`).join("");
+      (dR.data || []).map(x => `<option value="${escAttr(x.label)}">${escText(x.label)}</option>`).join("");
 
     // Subjects (active)
     const sR = await sb
@@ -281,7 +285,7 @@ async function loadFilters() {
 
     subjFilter.innerHTML =
       `<option value="">All</option>` +
-      (sR.data || []).map(x => `<option value="${x.label}">${x.label}</option>`).join("");
+      (sR.data || []).map(x => `<option value="${escAttr(x.label)}">${escText(x.label)}</option>`).join("");
 
     // Categories (active) - distinct labels
     const cats = await fetchDistinctPaged("ticket_categories", "label", {
@@ -290,7 +294,7 @@ async function loadFilters() {
     });
     catFilter.innerHTML =
       `<option value="">All</option>` +
-      cats.map(x => `<option value="${x}">${x}</option>`).join("");
+      cats.map(x => `<option value="${escAttr(x)}">${escText(x)}</option>`).join("");
 
     setBusyProgress(35, "Loading distinct values from tickets…");
 
@@ -304,15 +308,18 @@ async function loadFilters() {
       fetchDistinctPaged("tickets", "section", { order: "section" }),
     ]);
 
-    repFilter.innerHTML = `<option value="">All</option>` + rep.map(x => `<option value="${x}">${x}</option>`).join("");
-    pocFilter.innerHTML = `<option value="">All</option>` + poc.map(x => `<option value="${x}">${x}</option>`).join("");
-    porFilter.innerHTML = `<option value="">All</option>` + por.map(x => `<option value="${x}">${x}</option>`).join("");
+    // store for inline dropdown options
+    ownershipOptions = (own || []).filter(Boolean);
+
+    repFilter.innerHTML = `<option value="">All</option>` + rep.map(x => `<option value="${escAttr(x)}">${escText(x)}</option>`).join("");
+    pocFilter.innerHTML = `<option value="">All</option>` + poc.map(x => `<option value="${escAttr(x)}">${escText(x)}</option>`).join("");
+    porFilter.innerHTML = `<option value="">All</option>` + por.map(x => `<option value="${escAttr(x)}">${escText(x)}</option>`).join("");
     ownerFilter.innerHTML =
       `<option value="">All</option>` +
-      [`(Unassigned)`, ...own].map(x => `<option value="${x}">${x}</option>`).join("");
+      [`(Unassigned)`, ...ownershipOptions].map(x => `<option value="${escAttr(x)}">${escText(x)}</option>`).join("");
 
-    classFilter.innerHTML = `<option value="">All</option>` + cls.map(x => `<option value="${x}">${x}</option>`).join("");
-    sectionFilter.innerHTML = `<option value="">All</option>` + sec.map(x => `<option value="${x}">${x}</option>`).join("");
+    classFilter.innerHTML = `<option value="">All</option>` + cls.map(x => `<option value="${escAttr(x)}">${escText(x)}</option>`).join("");
+    sectionFilter.innerHTML = `<option value="">All</option>` + sec.map(x => `<option value="${escAttr(x)}">${escText(x)}</option>`).join("");
 
     // Week count filters (fixed choices)
     const wkOpts = [
@@ -324,8 +331,8 @@ async function loadFilters() {
       { v: "4", t: "4" },
       { v: "5+", t: "5+" },
     ];
-    actionsWeekFilter.innerHTML = wkOpts.map(o => `<option value="${o.v}">${o.t}</option>`).join("");
-    parentWeekFilter.innerHTML = wkOpts.map(o => `<option value="${o.v}">${o.t}</option>`).join("");
+    actionsWeekFilter.innerHTML = wkOpts.map(o => `<option value="${escAttr(o.v)}">${escText(o.t)}</option>`).join("");
+    parentWeekFilter.innerHTML = wkOpts.map(o => `<option value="${escAttr(o.v)}">${escText(o.t)}</option>`).join("");
 
     setBusyProgress(60, "Loading ticket statuses…");
 
@@ -420,11 +427,10 @@ function buildServerQuery({ includeCount = false } = {}) {
     );
   }
 
-  // Ticket Status (multi)
+  // Ticket Status (multi) - server side only when safe:
   const hasSome = selectedStatuses.size > 0;
   const hasBlank = includeBlankStatus === true;
 
-  // server-side only when safe:
   if (hasBlank && !hasSome) {
     query = query.or("ticket_status.is.null,ticket_status.eq.");
   } else if (!hasBlank && hasSome) {
@@ -481,7 +487,7 @@ async function fetchDerivedForTickets(ticketNumbers) {
 
     for (const r of (data || [])) {
       const k = r.ticket_number;
-      if (!map.has(k)) map.set(k, { action: [], parent: [], actionWeek: 0, parentWeek: 0 });
+      if (!map.has(k)) map.set(k, { action: [], parent: [], actionWeek: 0, parentWeek: 0, actionText: "", parentText: "" });
       const rec = map.get(k);
 
       if (r.objective === "Ticket: Action") {
@@ -503,24 +509,77 @@ async function fetchDerivedForTickets(ticketNumbers) {
 }
 
 // -------------------- Render helpers --------------------
+function buildSelectHtml({ ticketNumber, fieldName, value, options, placeholder, disabled }) {
+  const cur = (value ?? "").toString().trim();
+  const seen = new Set();
+  const opts = [];
+
+  // blank option
+  opts.push(`<option value="">${escText(placeholder)}</option>`);
+
+  for (const o of (options || [])) {
+    const v = String(o ?? "").trim();
+    if (!v) continue;
+    if (seen.has(v)) continue;
+    seen.add(v);
+    opts.push(`<option value="${escAttr(v)}"${v === cur ? " selected" : ""}>${escText(v)}</option>`);
+  }
+
+  // ensure current is visible even if not in list
+  if (cur && !seen.has(cur)) {
+    opts.push(`<option value="${escAttr(cur)}" selected>${escText(cur)}</option>`);
+  }
+
+  return `
+    <select class="cellSelect" data-ticket="${escAttr(ticketNumber)}" data-field="${escAttr(fieldName)}" ${disabled ? "disabled" : ""}>
+      ${opts.join("")}
+    </select>
+  `;
+}
+
 function renderEditable(ticket, meEmail, derived) {
   const canEdit =
+    __isAdmin ||
     (ticket.point_of_contact === meEmail) ||
     (ticket.point_of_resolution === meEmail);
 
-  const field = (name, val, type = "text") => {
-    if (!canEdit) return `<div class="muted">${td(val)}</div>`;
-    if (type === "date") {
-      return `<input class="cellEdit" type="date" data-ticket="${ticket.ticket_number}" data-field="${name}" value="${val || ""}" />`;
-    }
-    return `<input class="cellEdit" type="text" data-ticket="${ticket.ticket_number}" data-field="${name}" value="${td(val)}" />`;
-  };
+  const ticketNo = ticket.ticket_number;
+
+  const inputText = (name, val) => `
+    <input class="cellEdit" type="text"
+      data-ticket="${escAttr(ticketNo)}" data-field="${escAttr(name)}"
+      value="${escAttr(val ?? "")}" ${canEdit ? "" : "disabled"} />
+  `;
+
+  const inputDate = (name, val) => `
+    <input class="cellEdit" type="date"
+      data-ticket="${escAttr(ticketNo)}" data-field="${escAttr(name)}"
+      value="${escAttr(val ?? "")}" ${canEdit ? "" : "disabled"} />
+  `;
+
+  const ownershipDropdown = buildSelectHtml({
+    ticketNumber: ticketNo,
+    fieldName: "change_ownership",
+    value: ticket.change_ownership,
+    options: ownershipOptions,
+    placeholder: "(Unassigned)",
+    disabled: !canEdit,
+  });
+
+  const statusDropdown = buildSelectHtml({
+    ticketNumber: ticketNo,
+    fieldName: "ticket_status",
+    value: ticket.ticket_status,
+    options: statusOptions,
+    placeholder: "(Blank)",
+    disabled: !canEdit,
+  });
 
   return {
-    change_ownership: field("change_ownership", ticket.change_ownership),
-    follow_up_action_count_remarks: field("follow_up_action_count_remarks", ticket.follow_up_action_count_remarks),
-    next_follow_up_date: field("next_follow_up_date", ticket.next_follow_up_date, "date"),
-    ticket_status: field("ticket_status", ticket.ticket_status),
+    change_ownership: ownershipDropdown,
+    follow_up_action_count_remarks: inputText("follow_up_action_count_remarks", ticket.follow_up_action_count_remarks),
+    next_follow_up_date: inputDate("next_follow_up_date", ticket.next_follow_up_date),
+    ticket_status: statusDropdown,
 
     derivedAction: td(derived?.actionText || ""),
     derivedParent: td(derived?.parentText || ""),
@@ -530,20 +589,31 @@ function renderEditable(ticket, meEmail, derived) {
 }
 
 function bindInlineEdits() {
-  rowsEl.querySelectorAll(".cellEdit").forEach(inp => {
-    inp.addEventListener("blur", async () => {
-      const ticket_number = inp.dataset.ticket;
-      const field = inp.dataset.field;
-      const value = inp.value;
+  // inputs (blur) + date/select (change)
+  rowsEl.querySelectorAll(".cellEdit, .cellSelect").forEach(el => {
+    const ticket_number = el.dataset.ticket;
+    const field = el.dataset.field;
 
+    if (!ticket_number || !field) return;
+    if (el.disabled) return;
+
+    const save = async () => {
+      const value = (el.value ?? "").toString().trim();
       const patch = {};
-      patch[field] = value || null;
+      patch[field] = value === "" ? null : value;
 
       await runBusy("Saving…", async () => {
         const { error } = await sb.from("tickets").update(patch).eq("ticket_number", ticket_number);
         if (error) show(error.message, true);
       });
-    });
+    };
+
+    // selects + date inputs should save on change
+    const isSelect = el.classList.contains("cellSelect") || el.tagName === "SELECT";
+    const isDate = el.tagName === "INPUT" && el.type === "date";
+
+    if (isSelect || isDate) el.addEventListener("change", save);
+    else el.addEventListener("blur", save);
   });
 
   rowsEl.querySelectorAll(".delBtn").forEach(btn => {
@@ -594,7 +664,7 @@ async function loadPage() {
     if (!needClient) {
       const { data, error, count } = await buildServerQuery({ includeCount: true }).range(from, to);
       if (error) {
-        rowsEl.innerHTML = `<tr><td colspan="24">${error.message}</td></tr>`;
+        rowsEl.innerHTML = `<tr><td colspan="24">${escText(error.message)}</td></tr>`;
         return;
       }
 
@@ -611,8 +681,6 @@ async function loadPage() {
       }
 
       setBusyProgress(55, "Loading derived weekly counts…");
-      const me = await getMe();
-      const meEmail = me?.email || "";
 
       const ticketNumbers = data.map(x => x.ticket_number);
       const derivedMap = await fetchDerivedForTickets(ticketNumbers);
@@ -620,39 +688,39 @@ async function loadPage() {
       setBusyProgress(85, "Rendering…");
       rowsEl.innerHTML = data.map(t => {
         const d = derivedMap.get(t.ticket_number);
-        const e = renderEditable(t, meEmail, d);
+        const e = renderEditable(t, __meEmail, d);
 
         return `
           <tr>
-            <td>${td(t.ticket_number)}</td>
-            <td>${td(t.student_child_name)}</td>
-            <td>${td(t.issue_raised_by)}</td>
-            <td>${td(t.department)}</td>
-            <td>${td(t.subject)}</td>
-            <td>${td(t.category)}</td>
-            <td style="max-width:420px; white-space:pre-wrap;">${td(t.description)}</td>
-            <td>${fmtDateTime(t.raised_at)}</td>
-            <td>${td(t.reporter_email)}</td>
-            <td>${td(t.reporter_mobile)}</td>
+            <td>${escText(t.ticket_number)}</td>
+            <td>${escText(t.student_child_name)}</td>
+            <td>${escText(t.issue_raised_by)}</td>
+            <td>${escText(t.department)}</td>
+            <td>${escText(t.subject)}</td>
+            <td>${escText(t.category)}</td>
+            <td style="max-width:420px; white-space:pre-wrap;">${escText(t.description)}</td>
+            <td>${escText(fmtDateTime(t.raised_at))}</td>
+            <td>${escText(t.reporter_email)}</td>
+            <td>${escText(t.reporter_mobile)}</td>
 
-            <td>${td(t.class_name)}</td>
-            <td>${td(t.section)}</td>
-            <td>${td(t.scholar_number)}</td>
+            <td>${escText(t.class_name)}</td>
+            <td>${escText(t.section)}</td>
+            <td>${escText(t.scholar_number)}</td>
 
-            <td>${td(t.point_of_contact)}</td>
-            <td>${td(t.point_of_resolution)}</td>
+            <td>${escText(t.point_of_contact)}</td>
+            <td>${escText(t.point_of_resolution)}</td>
 
             <td>${e.change_ownership}</td>
             <td>${e.follow_up_action_count_remarks}</td>
             <td>${e.next_follow_up_date}</td>
             <td>${e.ticket_status}</td>
 
-            <td style="white-space:pre-wrap; max-width:420px;">${e.derivedAction}</td>
-            <td style="white-space:pre-wrap; max-width:420px;">${e.derivedParent}</td>
-            <td>${e.derivedActionWeek}</td>
-            <td>${e.derivedParentWeek}</td>
+            <td style="white-space:pre-wrap; max-width:420px;">${escText(e.derivedAction)}</td>
+            <td style="white-space:pre-wrap; max-width:420px;">${escText(e.derivedParent)}</td>
+            <td>${escText(e.derivedActionWeek)}</td>
+            <td>${escText(e.derivedParentWeek)}</td>
 
-            <td><button class="btn danger delBtn" data-ticket="${t.ticket_number}">Delete</button></td>
+            <td><button class="btn danger delBtn" data-ticket="${escAttr(t.ticket_number)}">Delete</button></td>
           </tr>
         `;
       }).join("");
@@ -713,45 +781,42 @@ async function loadPage() {
       return;
     }
 
-    const me = await getMe();
-    const meEmail = me?.email || "";
-
     setBusyProgress(85, "Rendering…");
     rowsEl.innerHTML = slice.map(t => {
       const d = derivedMap.get(t.ticket_number);
-      const e = renderEditable(t, meEmail, d);
+      const e = renderEditable(t, __meEmail, d);
 
       return `
         <tr>
-          <td>${td(t.ticket_number)}</td>
-          <td>${td(t.student_child_name)}</td>
-          <td>${td(t.issue_raised_by)}</td>
-          <td>${td(t.department)}</td>
-          <td>${td(t.subject)}</td>
-          <td>${td(t.category)}</td>
-          <td style="max-width:420px; white-space:pre-wrap;">${td(t.description)}</td>
-          <td>${fmtDateTime(t.raised_at)}</td>
-          <td>${td(t.reporter_email)}</td>
-          <td>${td(t.reporter_mobile)}</td>
+          <td>${escText(t.ticket_number)}</td>
+          <td>${escText(t.student_child_name)}</td>
+          <td>${escText(t.issue_raised_by)}</td>
+          <td>${escText(t.department)}</td>
+          <td>${escText(t.subject)}</td>
+          <td>${escText(t.category)}</td>
+          <td style="max-width:420px; white-space:pre-wrap;">${escText(t.description)}</td>
+          <td>${escText(fmtDateTime(t.raised_at))}</td>
+          <td>${escText(t.reporter_email)}</td>
+          <td>${escText(t.reporter_mobile)}</td>
 
-          <td>${td(t.class_name)}</td>
-          <td>${td(t.section)}</td>
-          <td>${td(t.scholar_number)}</td>
+          <td>${escText(t.class_name)}</td>
+          <td>${escText(t.section)}</td>
+          <td>${escText(t.scholar_number)}</td>
 
-          <td>${td(t.point_of_contact)}</td>
-          <td>${td(t.point_of_resolution)}</td>
+          <td>${escText(t.point_of_contact)}</td>
+          <td>${escText(t.point_of_resolution)}</td>
 
           <td>${e.change_ownership}</td>
           <td>${e.follow_up_action_count_remarks}</td>
           <td>${e.next_follow_up_date}</td>
           <td>${e.ticket_status}</td>
 
-          <td style="white-space:pre-wrap; max-width:420px;">${e.derivedAction}</td>
-          <td style="white-space:pre-wrap; max-width:420px;">${e.derivedParent}</td>
-          <td>${e.derivedActionWeek}</td>
-          <td>${e.derivedParentWeek}</td>
+          <td style="white-space:pre-wrap; max-width:420px;">${escText(e.derivedAction)}</td>
+          <td style="white-space:pre-wrap; max-width:420px;">${escText(e.derivedParent)}</td>
+          <td>${escText(e.derivedActionWeek)}</td>
+          <td>${escText(e.derivedParentWeek)}</td>
 
-          <td><button class="btn danger delBtn" data-ticket="${t.ticket_number}">Delete</button></td>
+          <td><button class="btn danger delBtn" data-ticket="${escAttr(t.ticket_number)}">Delete</button></td>
         </tr>
       `;
     }).join("");
@@ -802,8 +867,69 @@ async function exportAllFiltered() {
 
     setBusyProgress(85, "Building XLSX…");
 
+    const HEADER = [
+      "Ticket Number",
+      "Student Name",
+      "Issue Raised By",
+      "Department",
+      "Subject",
+      "Category",
+      "Description",
+      "Date",
+      "Reporter",
+      "Mobile Number",
+
+      "Date Of Incident",
+      "Time Of Incident",
+      "Incident Reported By",
+      "Location Of Incident",
+
+      "Class",
+      "Section",
+      "Scholar Number",
+      "Segment",
+
+      "Point Of Contact",
+      "Point Of Resolution",
+      "Keep In Loop",
+
+      "Change Ownership",
+
+      "Follow-Up/Action Dates",
+      "Follow-Up/Action Type",
+      "Follow-Up/Action Count And Remarks",
+      "Next Follow Up Date",
+
+      "Psych Counseling Status",
+      "Card Status",
+      "Punishment Execution Remark",
+
+      "Ticket Status",
+
+      "Parent Notified On Conclusion",
+      "POC Follow Up Dates",
+      "POC Follow Up Remarks",
+      "Resolution Date",
+
+      "Auditor Email",
+      "Audit Date",
+      "Audit Score",
+      "Audit Categories",
+      "Audit Remarks",
+
+      "Comments by POR",
+
+      // ✅ these were missing / empty earlier — now filled from derived touchpoints
+      "Ticket Action Comments",
+      "Ticket Parent Updates",
+
+      // ✅ exact names you asked for
+      "#Actions this week",
+      "#Parent Updates this week",
+    ];
+
     const rows = filtered.map(t => {
-      const d = derived.get(t.ticket_number) || { actionWeek: 0, parentWeek: 0 };
+      const d = derived.get(t.ticket_number) || { actionWeek: 0, parentWeek: 0, actionText: "", parentText: "" };
 
       return {
         "Ticket Number": td(t.ticket_number),
@@ -858,15 +984,17 @@ async function exportAllFiltered() {
 
         "Comments by POR": td(t.comments_by_por),
 
-        "Ticket Action Comments (filled by formula, don't enter anything in this column)": "",
-        "Ticket Parent Updates (filled by formula, don't enter anything in this column)": "",
+        // ✅ derived values
+        "Ticket Action Comments": td(d.actionText ?? ""),
+        "Ticket Parent Updates": td(d.parentText ?? ""),
 
-        "#Ticket Actions this week": td(d.actionWeek ?? 0),
-        "#Ticket Parent Updates this week": td(d.parentWeek ?? 0),
+        // ✅ weekly counts
+        "#Actions this week": td(d.actionWeek ?? 0),
+        "#Parent Updates this week": td(d.parentWeek ?? 0),
       };
     });
 
-    const ws = window.XLSX.utils.json_to_sheet(rows);
+    const ws = window.XLSX.utils.json_to_sheet(rows, { header: HEADER });
     const wb = window.XLSX.utils.book_new();
     window.XLSX.utils.book_append_sheet(wb, ws, "Tickets");
 
@@ -881,7 +1009,12 @@ async function exportAllFiltered() {
 
 // -------------------- Boot --------------------
 (async () => {
-  await mountNav("ticket-reports");
+  const nav = await mountNav("ticket_reports");
+
+  // get permission context (admin can edit)
+  const me = await getMe();
+  __meEmail = me?.email || "";
+  __isAdmin = (nav?.profile?.role === "admin");
 
   initSessionUI();
   await loadFilters();
