@@ -67,6 +67,22 @@
     .ms-item:hover{ background: rgba(255,255,255,0.06); }
     .ms-item input{ width:16px; height:16px; accent-color: rgb(124,92,255); }
     .ms-caret{ opacity:0.7; }
+
+    /* ✅ IMPORTANT: make inline inputs/selects in table always visible */
+    .cellEdit, .cellSelect{
+      width: 100%;
+      min-width: 140px;
+      box-sizing: border-box;
+      padding: 8px 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(0,0,0,0.18);
+      color: rgba(255,255,255,0.90);
+    }
+    .cellEdit:disabled, .cellSelect:disabled{
+      opacity: .65;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 
@@ -81,7 +97,7 @@
 
         <div class="form">
 
-          <!-- ✅ NEW: Session / From / To -->
+          <!-- ✅ Session / From / To -->
           <div class="field span4">
             <label>Session</label>
             <select id="sessionFilter" data-placeholder="Select session..."></select>
@@ -166,7 +182,7 @@
             <select id="parentWeekFilter" data-placeholder="All"></select>
           </div>
 
-          <!-- Search full width (cleaner now that Session took the date row) -->
+          <!-- Search -->
           <div class="field span12">
             <label>Search (Ticket / Student / Category)</label>
             <input id="q" type="text" placeholder="Type and press Apply..." />
