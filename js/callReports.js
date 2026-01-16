@@ -13,7 +13,7 @@ const searchBox = document.getElementById("searchBox");
 const reloadBtn = document.getElementById("reloadBtn");
 
 const fltCoordinator = document.getElementById("fltCoordinator");
-const fltCallType = document.getElementById("fltCallType");
+const fltCallType = document.getElementById("fltCallType"); // existing single-select (we will replace it visually)
 const fltFrom = document.getElementById("fltFrom");
 const fltTo = document.getElementById("fltTo");
 const applyFiltersBtn = document.getElementById("applyFiltersBtn");
@@ -32,6 +32,21 @@ const PAGE_SIZE = 25;
 let lastData = [];
 let coordMap = new Map(); // number -> email
 let profileByEmail = new Map(); // email -> {display_name,email}
+
+// -------------------- Multi-select state --------------------
+let selectedCallTypes = new Set(); // keys like "INCOMING"
+let selectedDurationThresholds = new Set(); // numbers (seconds)
+
+let callTypeMS = null;
+let durationMS = null;
+
+const DURATION_OPTIONS = [
+  { key: 10, label: "More than 10 sec" },
+  { key: 30, label: "More than 30 sec" },
+  { key: 60, label: "More than 60 sec" },
+  { key: 120, label: "More than 2 min" },
+  { key: 300, label: "More than 5 min" },
+];
 
 // -------------------- UI helpers --------------------
 function show(el, text, isErr = false) {
@@ -116,23 +131,239 @@ function showOk(text) {
   show(reportMsg, text, false);
 }
 
-// ✅ disable controls while loading (prevents double fetch / weird UI)
-function setControlsDisabled(disabled) {
-  const list = [
-    searchBox,
-    reloadBtn,
-    fltCoordinator,
-    fltCallType,
-    fltFrom,
-    fltTo,
-    applyFiltersBtn,
-    clearFiltersBtn,
-    exportBtn,
-    prevBtn,
-    nextBtn,
-  ].filter(Boolean);
+// -------------------- Multi-select UI (same dark style) --------------------
+function ensureMsCss() {
+  if (document.getElementById("crMsCss")) return;
+  const st = document.createElement("style");
+  st.id = "crMsCss";
+  st.textContent = `
+    .cr-ms-wrap{position:relative;width:100%}
+    .cr-ms-btn{
+      width:100%;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      padding:10px 12px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,0.14);
+      background: rgba(0,0,0,0.18);
+      color: rgba(255,255,255,0.90);
+      cursor:pointer;
+      min-height: 42px;
+    }
+    .cr-ms-btn:focus{outline:none; box-shadow:0 0 0 2px rgba(124,92,255,0.35); border-color: rgba(124,92,255,0.55);}
+    .cr-ms-panel{
+      position:absolute;
+      left:0; right:0;
+      top: calc(100% + 8px);
+      z-index: 60;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,0.14);
+      background: rgba(10,10,16,0.92);
+      box-shadow: 0 18px 50px rgba(0,0,0,0.55);
+      overflow:hidden;
+      display:none;
+    }
+    .cr-ms-head{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      padding:10px 10px;
+      border-bottom:1px solid rgba(255,255,255,0.08);
+    }
+    .cr-ms-title{ font-size:12px; color: rgba(255,255,255,0.7); }
+    .cr-ms-actions{ display:flex; gap:8px; }
+    .cr-ms-mini{
+      padding:6px 10px;
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,0.14);
+      background: rgba(0,0,0,0.2);
+      color: rgba(255,255,255,0.85);
+      cursor:pointer;
+      font-size:12px;
+    }
+    .cr-ms-list{ max-height: 260px; overflow:auto; padding: 6px; }
+    .cr-ms-item{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding:8px 10px;
+      border-radius:12px;
+      cursor:pointer;
+      color: rgba(255,255,255,0.90);
+    }
+    .cr-ms-item:hover{ background: rgba(255,255,255,0.06); }
+    .cr-ms-item input{ width:16px; height:16px; accent-color: rgb(124,92,255); }
+    .cr-ms-caret{ opacity:0.7; }
+  `;
+  document.head.appendChild(st);
+}
 
-  for (const el of list) el.disabled = !!disabled;
+function getFieldBox(el) {
+  return el?.closest?.(".field") || el?.parentElement || null;
+}
+
+function makeMultiSelect({ mountEl, id, title, options, selectedSet, onChange }) {
+  ensureMsCss();
+
+  // avoid duplicates
+  if (document.getElementById(id)) {
+    return mountEl._msInstance || null;
+  }
+
+  const wrap = document.createElement("div");
+  wrap.className = "cr-ms-wrap";
+  wrap.id = id;
+
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "cr-ms-btn";
+
+  const btnText = document.createElement("span");
+  btnText.textContent = "All";
+
+  const caret = document.createElement("span");
+  caret.className = "cr-ms-caret";
+  caret.textContent = "▾";
+
+  btn.appendChild(btnText);
+  btn.appendChild(caret);
+
+  const panel = document.createElement("div");
+  panel.className = "cr-ms-panel";
+
+  const head = document.createElement("div");
+  head.className = "cr-ms-head";
+
+  const headTitle = document.createElement("div");
+  headTitle.className = "cr-ms-title";
+  headTitle.textContent = title;
+
+  const actions = document.createElement("div");
+  actions.className = "cr-ms-actions";
+
+  const allBtn = document.createElement("button");
+  allBtn.type = "button";
+  allBtn.className = "cr-ms-mini";
+  allBtn.textContent = "All";
+
+  const clearBtn = document.createElement("button");
+  clearBtn.type = "button";
+  clearBtn.className = "cr-ms-mini";
+  clearBtn.textContent = "Clear";
+
+  actions.appendChild(allBtn);
+  actions.appendChild(clearBtn);
+
+  head.appendChild(headTitle);
+  head.appendChild(actions);
+
+  const list = document.createElement("div");
+  list.className = "cr-ms-list";
+
+  panel.appendChild(head);
+  panel.appendChild(list);
+
+  wrap.appendChild(btn);
+  wrap.appendChild(panel);
+
+  mountEl.appendChild(wrap);
+
+  const labelForKey = (k) => {
+    const hit = options.find(o => String(o.key) === String(k));
+    return hit?.label ?? String(k);
+  };
+
+  function renderBtn() {
+    const n = selectedSet.size;
+    if (n === 0) { btnText.textContent = "All"; return; }
+    if (n === 1) { btnText.textContent = labelForKey(Array.from(selectedSet)[0]); return; }
+    btnText.textContent = `${n} selected`;
+  }
+
+  function renderList() {
+    list.innerHTML = options.map(opt => {
+      const checked = selectedSet.has(opt.key);
+      return `
+        <div class="cr-ms-item" data-key="${escapeHtml(String(opt.key))}">
+          <input type="checkbox" ${checked ? "checked" : ""} />
+          <div>${escapeHtml(opt.label)}</div>
+        </div>
+      `;
+    }).join("");
+
+    list.querySelectorAll(".cr-ms-item").forEach(row => {
+      row.addEventListener("mousedown", (e) => e.preventDefault()); // keep open
+
+      row.addEventListener("click", () => {
+        const keyStr = row.getAttribute("data-key");
+        const opt = options.find(o => String(o.key) === String(keyStr));
+        if (!opt) return;
+
+        if (selectedSet.has(opt.key)) selectedSet.delete(opt.key);
+        else selectedSet.add(opt.key);
+
+        renderList();
+        renderBtn();
+        onChange?.();
+      });
+    });
+
+    renderBtn();
+  }
+
+  function open() { panel.style.display = "block"; }
+  function close() { panel.style.display = "none"; }
+  function toggle() { panel.style.display = panel.style.display === "block" ? "none" : "block"; }
+
+  btn.addEventListener("click", toggle);
+  allBtn.addEventListener("click", () => {
+    selectedSet.clear();
+    renderList();
+    renderBtn();
+    close();
+    onChange?.();
+  });
+  clearBtn.addEventListener("click", () => {
+    selectedSet.clear();
+    renderList();
+    renderBtn();
+    onChange?.();
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!wrap.contains(e.target)) close();
+  });
+
+  renderList();
+
+  const api = {
+    wrap,
+    rerender: renderList,
+    setOptions(newOpts) {
+      options = newOpts || [];
+      const valid = new Set(options.map(o => String(o.key)));
+      for (const k of Array.from(selectedSet)) {
+        if (!valid.has(String(k))) selectedSet.delete(k);
+      }
+      renderList();
+    },
+    clearSelection() {
+      selectedSet.clear();
+      renderList();
+    }
+  };
+
+  mountEl._msInstance = api;
+  return api;
+}
+
+// ✅ Duration multi-select behavior: OR semantics => min threshold
+function getDurationThresholdMin() {
+  if (!selectedDurationThresholds.size) return null;
+  return Math.min(...Array.from(selectedDurationThresholds).map(x => Number(x) || 0));
 }
 
 // -------------------- settings helpers --------------------
@@ -196,37 +427,100 @@ function normalizeSummaryText(s) {
 function extractSection(text, header) {
   const t = normalizeSummaryText(text);
   const up = t.toUpperCase();
-
   const h = header.toUpperCase() + ":";
   const i = up.indexOf(h);
   if (i < 0) return "";
-
   const j = up.indexOf("SUGGESTIONS:", i + h.length);
-  const chunk =
-    header.toUpperCase() === "POSITIVES"
-      ? t.slice(i + h.length, j >= 0 ? j : undefined)
-      : t.slice(i + h.length);
+  const chunk = header.toUpperCase() === "POSITIVES"
+    ? t.slice(i + h.length, j >= 0 ? j : undefined)
+    : t.slice(i + h.length);
 
-  const lines = chunk
-    .split("\n")
-    .map((x) => x.trim())
-    .filter(Boolean);
-
-  const bulletLines = lines.filter((x) => x.startsWith("-"));
-  const out = (bulletLines.length ? bulletLines : lines).join("\n").trim();
-
-  return out;
+  const lines = chunk.split("\n").map(x => x.trim()).filter(Boolean);
+  const bullets = lines.filter(x => x.startsWith("-"));
+  return (bullets.length ? bullets : lines).join("\n").trim();
 }
 
 function splitSummary(summary) {
   const positives = extractSection(summary, "POSITIVES");
   const suggestions = extractSection(summary, "SUGGESTIONS");
-
   return {
     positives: positives || "- (None mentioned)",
     suggestions: suggestions || "- (None mentioned)",
     normalized: normalizeSummaryText(summary),
   };
+}
+
+// -------------------- Install filters (FIX GLITCH) --------------------
+function installCallTypeMultiInSameField() {
+  if (!fltCallType) return;
+
+  const field = getFieldBox(fltCallType);
+  if (!field) return;
+
+  // If already installed, do nothing
+  if (field.dataset.msInstalled === "1") return;
+  field.dataset.msInstalled = "1";
+
+  // Fix label in SAME field (no extra field -> no grid glitch)
+  let labelEl = field.querySelector("label");
+  if (!labelEl) {
+    labelEl = document.createElement("label");
+    field.prepend(labelEl);
+  }
+  labelEl.textContent = "Call Type (Multi)";
+
+  // Remove any custom select wrapper inside this field (from enhanceSelect)
+  // Keep label + the original select hidden for reference.
+  Array.from(field.children).forEach(ch => {
+    if (ch === labelEl) return;
+    if (ch === fltCallType) return;
+    ch.remove();
+  });
+
+  // Build options
+  if (fltCallType.options.length <= 1) {
+    fltCallType.innerHTML = `
+      <option value=""></option>
+      <option value="INCOMING">INCOMING</option>
+      <option value="OUTGOING">OUTGOING</option>
+      <option value="MISSED">MISSED</option>
+      <option value="REJECTED">REJECTED</option>
+    `;
+  }
+
+  const opts = Array.from(fltCallType.options)
+    .map(o => ({ key: o.value, label: (o.textContent || o.value || "").trim() }))
+    .filter(o => String(o.key || "").trim() !== "");
+
+  fltCallType.style.display = "none";
+
+  callTypeMS = makeMultiSelect({
+    mountEl: field,
+    id: "callTypeMulti",
+    title: "Select call types",
+    options: opts,
+    selectedSet: selectedCallTypes,
+    onChange: () => {}
+  });
+
+  // Add duration field right after call type field (one new field)
+  const existingDurField = document.getElementById("durationFieldBox");
+  if (!existingDurField) {
+    const durField = document.createElement("div");
+    durField.id = "durationFieldBox";
+    durField.className = field.className; // keep same grid span
+    durField.innerHTML = `<label>Call Duration (Multi)</label>`;
+    field.insertAdjacentElement("afterend", durField);
+
+    durationMS = makeMultiSelect({
+      mountEl: durField,
+      id: "durationMulti",
+      title: "Select duration filters",
+      options: DURATION_OPTIONS,
+      selectedSet: selectedDurationThresholds,
+      onChange: () => {}
+    });
+  }
 }
 
 // -------------------- load coordinator directory --------------------
@@ -262,9 +556,7 @@ async function loadCoordinatorDirectory() {
           return `<option value="${escapeHtml(num)}">${escapeHtml(label)}</option>`;
         })
         .join("");
-    try {
-      refreshSelect(fltCoordinator);
-    } catch {}
+    try { refreshSelect(fltCoordinator); } catch {}
   }
 }
 
@@ -278,13 +570,19 @@ function buildQuery({ withCount = true } = {}) {
     );
 
   const coordNum = (fltCoordinator?.value || "").trim();
-  const callType = (fltCallType?.value || "").trim();
   const from = (fltFrom?.value || "").trim();
   const to = (fltTo?.value || "").trim();
   const search = (searchBox?.value || "").trim();
 
   if (coordNum) q = q.eq("coordinator_number", coordNum);
-  if (callType) q = q.eq("call_type", callType);
+
+  // ✅ Call Type multi
+  const types = Array.from(selectedCallTypes);
+  if (types.length) q = q.in("call_type", types);
+
+  // ✅ Duration multi (OR semantics => min threshold)
+  const minThr = getDurationThresholdMin();
+  if (minThr !== null) q = q.gte("duration_seconds", minThr);
 
   if (from) q = q.gte("created_at", new Date(from + "T00:00:00").toISOString());
   if (to) q = q.lte("created_at", new Date(to + "T23:59:59").toISOString());
@@ -298,7 +596,6 @@ function buildQuery({ withCount = true } = {}) {
   const toIdx = fromIdx + PAGE_SIZE - 1;
 
   q = q.order("created_at", { ascending: false }).range(fromIdx, toIdx);
-
   return q;
 }
 
@@ -309,53 +606,47 @@ function renderTable(data, totalCount = 0) {
 
   if (!lastData.length) {
     rowsEl.innerHTML = `<tr><td colspan="16">No data.</td></tr>`;
-    if (pageMeta) pageMeta.textContent = `Page ${page} / 1`;
-    if (metaLine) metaLine.textContent = `Showing 0 of 0`;
-    if (prevBtn) prevBtn.disabled = page <= 1;
-    if (nextBtn) nextBtn.disabled = true;
     return;
   }
 
-  rowsEl.innerHTML = lastData
-    .map((r) => {
-      const ts = r.created_at;
-      const parts = deriveDateParts(ts);
-      const coordName = coordinatorLabelByNumber(r.coordinator_number);
+  rowsEl.innerHTML = lastData.map((r) => {
+    const ts = r.created_at;
+    const parts = deriveDateParts(ts);
+    const coordName = coordinatorLabelByNumber(r.coordinator_number);
 
-      const transcript = String(r.call_transcript || "").trim();
-      const transcriptCell = transcript
-        ? `<details><summary class="muted">View transcript</summary><div style="white-space:pre-wrap;margin-top:8px;">${escapeHtml(transcript)}</div></details>`
-        : `—`;
+    const transcript = String(r.call_transcript || "").trim();
+    const transcriptCell = transcript
+      ? `<details><summary class="muted">View transcript</summary><div style="white-space:pre-wrap;margin-top:8px;">${escapeHtml(transcript)}</div></details>`
+      : `—`;
 
-      const rawSummary = String(r.call_summary || "").trim();
-      const summary = rawSummary ? normalizeSummaryText(rawSummary) : "—";
-      const hasSummary = !!rawSummary;
+    const rawSummary = String(r.call_summary || "").trim();
+    const summary = rawSummary ? normalizeSummaryText(rawSummary) : "—";
+    const hasSummary = !!rawSummary;
 
-      return `
-        <tr data-id="${r.id}">
-          <td>${escapeHtml(fmt(ts))}</td>
-          <td>${escapeHtml(r.parent_number || "")}</td>
-          <td>${escapeHtml(r.coordinator_number || "")}</td>
-          <td>${escapeHtml(r.call_start || "—")}</td>
-          <td>${escapeHtml(r.call_end || "—")}</td>
-          <td>${escapeHtml(r.duration_seconds ?? "")}</td>
-          <td>${escapeHtml(r.contact_name || "")}</td>
-          <td>${escapeHtml(r.call_type || "")}</td>
-          <td class="cell-summary" style="white-space:pre-wrap;">${escapeHtml(summary)}</td>
-          <td>${transcriptCell}</td>
-          <td>${escapeHtml(coordName)}</td>
-          <td>${escapeHtml(parts.day)}</td>
-          <td>${escapeHtml(parts.week)}</td>
-          <td>${escapeHtml(parts.month)}</td>
-          <td>${escapeHtml(parts.year)}</td>
-          <td style="text-align:right;white-space:nowrap;">
-            <button class="btn" data-act="gen">Generate</button>
-            <button class="btn primary" data-act="new" ${hasSummary ? "" : "disabled"}>New Entry</button>
-          </td>
-        </tr>
-      `;
-    })
-    .join("");
+    return `
+      <tr data-id="${r.id}">
+        <td>${escapeHtml(fmt(ts))}</td>
+        <td>${escapeHtml(r.parent_number || "")}</td>
+        <td>${escapeHtml(r.coordinator_number || "")}</td>
+        <td>${escapeHtml(r.call_start || "—")}</td>
+        <td>${escapeHtml(r.call_end || "—")}</td>
+        <td>${escapeHtml(r.duration_seconds ?? "")}</td>
+        <td>${escapeHtml(r.contact_name || "")}</td>
+        <td>${escapeHtml(r.call_type || "")}</td>
+        <td class="cell-summary" style="white-space:pre-wrap;">${escapeHtml(summary)}</td>
+        <td>${transcriptCell}</td>
+        <td>${escapeHtml(coordName)}</td>
+        <td>${escapeHtml(parts.day)}</td>
+        <td>${escapeHtml(parts.week)}</td>
+        <td>${escapeHtml(parts.month)}</td>
+        <td>${escapeHtml(parts.year)}</td>
+        <td style="text-align:right;white-space:nowrap;">
+          <button class="btn" data-act="gen">Generate</button>
+          <button class="btn primary" data-act="new" ${hasSummary ? "" : "disabled"}>New Entry</button>
+        </td>
+      </tr>
+    `;
+  }).join("");
 
   const totalPages = Math.max(1, Math.ceil((totalCount || lastData.length) / PAGE_SIZE));
   if (pageMeta) pageMeta.textContent = `Page ${page} / ${totalPages}`;
@@ -371,33 +662,19 @@ function renderTable(data, totalCount = 0) {
 
 async function fetchData() {
   if (!rowsEl) return;
-
-  // ✅ show progressbar while call logs load
   showProgress("Loading call logs…");
-  setControlsDisabled(true);
   rowsEl.innerHTML = `<tr><td colspan="16">Loading…</td></tr>`;
 
-  try {
-    const { data, error, count } = await buildQuery();
-    if (error) {
-      console.error(error);
-      rowsEl.innerHTML = `<tr><td colspan="16">${escapeHtml(error.message)}</td></tr>`;
-      showErr(error.message);
-      return;
-    }
-
-    renderTable(data || [], count || 0);
-
-    // ✅ hide progress after successful render
-    hide(reportMsg);
-  } catch (e) {
-    console.error(e);
-    const msgText = String(e?.message || e);
-    rowsEl.innerHTML = `<tr><td colspan="16">${escapeHtml(msgText)}</td></tr>`;
-    showErr(msgText);
-  } finally {
-    setControlsDisabled(false);
+  const { data, error, count } = await buildQuery();
+  if (error) {
+    console.error(error);
+    showErr(error.message);
+    rowsEl.innerHTML = `<tr><td colspan="16">${escapeHtml(error.message)}</td></tr>`;
+    return;
   }
+
+  hide(reportMsg);
+  renderTable(data || [], count || 0);
 }
 
 // -------------------- generate summary --------------------
@@ -497,7 +774,6 @@ function newEntryFromRow(rowId) {
 
     positives,
     suggestions,
-
     positives_text: positives,
     suggestions_text: suggestions,
     positive: positives,
@@ -517,7 +793,6 @@ async function exportExcel() {
   showProgress("Preparing Excel…");
 
   const coordNum = (fltCoordinator?.value || "").trim();
-  const callType = (fltCallType?.value || "").trim();
   const from = (fltFrom?.value || "").trim();
   const to = (fltTo?.value || "").trim();
   const search = (searchBox?.value || "").trim();
@@ -529,9 +804,16 @@ async function exportExcel() {
     .limit(2000);
 
   if (coordNum) q = q.eq("coordinator_number", coordNum);
-  if (callType) q = q.eq("call_type", callType);
+
+  const types = Array.from(selectedCallTypes);
+  if (types.length) q = q.in("call_type", types);
+
+  const minThr = getDurationThresholdMin();
+  if (minThr !== null) q = q.gte("duration_seconds", minThr);
+
   if (from) q = q.gte("created_at", new Date(from + "T00:00:00").toISOString());
   if (to) q = q.lte("created_at", new Date(to + "T23:59:59").toISOString());
+
   if (search) {
     const esc = search.replace(/,/g, " ");
     q = q.or(`parent_number.ilike.%${esc}%,contact_name.ilike.%${esc}%,call_summary.ilike.%${esc}%`);
@@ -579,14 +861,15 @@ async function exportExcel() {
 
 // -------------------- events --------------------
 function wireEvents() {
+  // ✅ install multiselects (fixed layout)
+  installCallTypeMultiInSameField();
+
+  // keep other selects enhanced
   try {
     enhanceSelect(fltCoordinator, {
       placeholder: fltCoordinator?.getAttribute("data-placeholder") || "All coordinators",
       search: true,
     });
-  } catch {}
-  try {
-    enhanceSelect(fltCallType, { placeholder: fltCallType?.getAttribute("data-placeholder") || "All types" });
   } catch {}
 
   reloadBtn?.addEventListener("click", () => fetchData());
@@ -607,11 +890,15 @@ function wireEvents() {
 
   clearFiltersBtn?.addEventListener("click", () => {
     if (fltCoordinator) fltCoordinator.value = "";
-    if (fltCallType) fltCallType.value = "";
     if (fltFrom) fltFrom.value = "";
     if (fltTo) fltTo.value = "";
     try { refreshSelect(fltCoordinator); } catch {}
-    try { refreshSelect(fltCallType); } catch {}
+
+    selectedCallTypes.clear();
+    selectedDurationThresholds.clear();
+    callTypeMS?.rerender?.();
+    durationMS?.rerender?.();
+
     page = 1;
     fetchData();
   });
@@ -655,7 +942,6 @@ function wireEvents() {
 (async () => {
   await requireAuth();
   await mountNav("callReports");
-
   wireEvents();
   await loadCoordinatorDirectory();
   await fetchData();
