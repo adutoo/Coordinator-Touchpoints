@@ -51,6 +51,7 @@ export async function mountNav(activePage) {
 
         <!-- ✅ New Call page -->
         ${link("callReports.html", "call_reports", "Call Reports")}
+        ${isAdmin ? link("students_admin.html", "students_admin", "Students") : ""}
 
         ${isAdmin ? link("admin.html", "admin", "Admin") : ""}
         <button id="logoutBtn" class="btn danger">Logout</button>
