@@ -731,3 +731,59 @@ input.sm-cell.sm-readonly {
   color: rgba(255,255,255,0.80);
   background: rgba(0,0,0,0.25);
 }
+
+/* Header layout */
+.sm-colhead-inner{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+
+/* Delete column button hidden until hover */
+.sm-col-del{
+  opacity:0;
+  pointer-events:none;
+  background:transparent;
+  border:none;
+  cursor:pointer;
+  font-size:14px;
+  color: rgba(255,255,255,0.75);
+}
+th.sm-colhead:hover .sm-col-del{
+  opacity:1;
+  pointer-events:auto;
+}
+
+/* Add column (+) in last header */
+.sm-col-add{
+  width:28px;
+  height:28px;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.85);
+  cursor:pointer;
+}
+.sm-col-add:hover{
+  border-color: rgba(124,92,255,0.55);
+  background: rgba(124,92,255,0.12);
+}
+
+/* Row delete icon button */
+.sm-icon-btn{
+  width:34px;
+  height:34px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.04);
+  cursor:pointer;
+  color: rgba(255,255,255,0.8);
+}
+.sm-icon-btn.danger:hover{
+  border-color: rgba(255,77,109,0.55);
+  background: rgba(255,77,109,0.12);
+}
