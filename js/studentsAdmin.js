@@ -8,18 +8,21 @@ import { withBusy, setBusyProgress } from "./busy.js";
  * Students table editor (Admin)
  * - Spreadsheet-like grid
  * - Inline edits + Add/Delete + Save
- * - Import CSV/XLSX + Export XLSX
- * - Optional schema management via Edge Function
+ * - Import CSV/XLSX via popup + Export XLSX
+ * - Schema management via Edge Function:
+ *    - action: "schema"
+ *    - action: "add_column" { table,name,type }
+ *    - action: "drop_column" { table,name }
  */
 
 // -------------------- Config --------------------
 const STUDENTS_TABLE = "students";
 const SCHEMA_FN = "students-schema-admin";
-const ALTER_FN = "students-schema-admin";
-
 const PAGE_SIZE = 100;
+
 const PINNED_COLS = ["child_name", "student_name", "class_name", "section", "sr_number"];
-const READONLY_COLS = new Set(["id", "created_at"]);
+const READONLY_COLS = ["id", "created_at"]; // never editable, never sent in upserts
+const PROTECTED_COLS = new Set(["id", "created_at"]); // cannot drop
 
 // -------------------- DOM --------------------
 const elMsg = document.getElementById("smMsg");
@@ -27,6 +30,7 @@ const elSearch = document.getElementById("smSearch");
 const elReload = document.getElementById("smReload");
 const elAddRow = document.getElementById("smAddRow");
 const elSave = document.getElementById("smSave");
+const elUpload = document.getElementById("smUpload");   // IMPORTANT: your Upload button must have id="smUpload"
 const elExport = document.getElementById("smExport");
 
 const elThead = document.getElementById("smThead");
@@ -39,41 +43,22 @@ const elPrev = document.getElementById("smPrev");
 const elNext = document.getElementById("smNext");
 const elDirtyPill = document.getElementById("smDirtyPill");
 
-// Import UI (may be in popup, might not exist on page load)
-const elFile = document.getElementById("smFile");
-const elImport = document.getElementById("smImport");
-const elImportMode = document.getElementById("smImportMode");
-const elUpsertKey = document.getElementById("smUpsertKey");
-
-// Schema UI (may not exist)
-const elSchemaReload = document.getElementById("smSchemaReload");
-const elAddColName = document.getElementById("smAddColName");
-const elAddColType = document.getElementById("smAddColType");
-const elAddColBtn = document.getElementById("smAddColBtn");
-const elDropCol = document.getElementById("smDropCol");
-const elDropConfirm = document.getElementById("smDropConfirm");
-const elDropColBtn = document.getElementById("smDropColBtn");
-
 // -------------------- State --------------------
 let me = null;
 let profile = null;
-
 let page = 0;
 let totalCount = 0;
 
-let columns = []; // [{name,type}]
-let rows = []; // current page rows
+let columns = []; // [{name,type?}]
+let rows = [];    // current page rows
 
 const dirtyByKey = new Map(); // key -> patch
-const newKeys = new Set(); // keys of new rows
-
-let activeCell = null;
+const newKeys = new Set();    // keys that are new rows
 
 // -------------------- Utils --------------------
 function showMsg(text, isErr = false) {
   if (!elMsg) return;
   elMsg.style.display = "block";
-  elMsg.classList.add("notice");
   elMsg.style.borderColor = isErr ? "rgba(255,77,109,0.55)" : "rgba(124,92,255,0.55)";
   elMsg.style.color = isErr ? "rgba(255,200,210,0.95)" : "rgba(255,255,255,0.72)";
   elMsg.textContent = text;
@@ -92,27 +77,39 @@ function esc(s) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
-
 function humanize(name) {
   return String(name || "")
     .replaceAll("_", " ")
     .replace(/\b\w/g, (m) => m.toUpperCase());
 }
-
 function isBlank(v) {
   return v === null || v === undefined || String(v).trim() === "";
 }
 
+function getPreferredUpsertKey() {
+  const names = columns.map(c => c.name);
+  if (names.includes("child_name")) return "child_name";
+  if (names.includes("sr_number")) return "sr_number";
+  if (names.includes("id")) return "id";
+  return names[0] || "child_name";
+}
+
 function inferColumnsFromRows(sampleRows) {
   const set = new Set();
-  for (const r of sampleRows || []) Object.keys(r || {}).forEach((k) => set.add(k));
+  for (const r of (sampleRows || [])) Object.keys(r || {}).forEach(k => set.add(k));
   set.delete("__key");
-  set.delete("__isNew");
 
   const list = Array.from(set);
-  const pinned = PINNED_COLS.filter((c) => list.includes(c));
-  const rest = list.filter((c) => !pinned.includes(c)).sort((a, b) => a.localeCompare(b));
-  return [...pinned, ...rest].map((name) => ({ name }));
+  const pinned = PINNED_COLS.filter(c => list.includes(c));
+  const rest = list.filter(c => !pinned.includes(c)).sort((a, b) => a.localeCompare(b));
+  return [...pinned, ...rest].map(name => ({ name }));
+}
+
+function reorderColumnsBySchema(schemaCols) {
+  const names = schemaCols.map(x => x.name);
+  const pinned = PINNED_COLS.filter(c => names.includes(c));
+  const rest = names.filter(c => !pinned.includes(c));
+  return [...pinned, ...rest].map(n => schemaCols.find(x => x.name === n));
 }
 
 function getRowKey(row) {
@@ -121,7 +118,6 @@ function getRowKey(row) {
   if (cn !== undefined && cn !== null && String(cn).trim() !== "") return `child:${String(cn).trim()}`;
   return row?.__key || `tmp:${Math.random().toString(16).slice(2)}`;
 }
-
 function parseKey(k) {
   const s = String(k || "");
   if (s.startsWith("id:")) return { field: "id", value: s.slice(3) };
@@ -133,35 +129,6 @@ function markDirtyPill() {
   const has = dirtyByKey.size > 0 || newKeys.size > 0;
   if (!elDirtyPill) return;
   elDirtyPill.style.display = has ? "inline-flex" : "none";
-}
-
-function reorderColumnsBySchema(schemaCols) {
-  const names = schemaCols.map((x) => x.name);
-  const pinned = PINNED_COLS.filter((c) => names.includes(c));
-  const rest = names.filter((c) => !pinned.includes(c));
-  return [...pinned, ...rest].map((n) => schemaCols.find((x) => x.name === n));
-}
-
-function stripReadonlyCols(obj) {
-  for (const c of READONLY_COLS) {
-    if (c in obj) delete obj[c];
-  }
-  return obj;
-}
-
-function getUpsertKeySafe() {
-  // If dropdown exists, use it
-  if (elUpsertKey && String(elUpsertKey.value || "").trim()) return String(elUpsertKey.value).trim();
-
-  // Else pick a safe default
-  const names = (columns || []).map((c) => c.name);
-  if (names.includes("child_name")) return "child_name";
-  if (names.includes("sr_number")) return "sr_number";
-  if (names.includes("student_name")) return "student_name";
-
-  // last resort (but never id)
-  const fallback = names.find((n) => !READONLY_COLS.has(n));
-  return fallback || "child_name";
 }
 
 // -------------------- Admin Guard --------------------
@@ -177,192 +144,120 @@ async function guardAdmin() {
   }
 }
 
-// -------------------- Schema (optional) --------------------
-function normalizeSchemaResponse(data) {
-  if (!data?.ok || !Array.isArray(data.columns)) return null;
-
-  return data.columns
-    .map((c) => {
-      const name = c.name ?? c.column_name;
-      const type = c.type ?? c.data_type;
-      if (!name) return null;
-      return { name: String(name), type: String(type || "") };
-    })
-    .filter(Boolean);
-}
-
+// -------------------- Schema calls --------------------
 async function fetchSchemaSafe() {
-  const tries = [
-    { action: "schema" },
-    { action: "list", table: STUDENTS_TABLE },
-    { action: "schema", table: STUDENTS_TABLE },
-  ];
+  try {
+    const { data, error } = await sb.functions.invoke(SCHEMA_FN, {
+      body: { action: "schema", table: STUDENTS_TABLE },
+    });
+    if (error) throw error;
 
-  for (const body of tries) {
-    try {
-      const { data, error } = await sb.functions.invoke(SCHEMA_FN, { body });
-      if (error) throw error;
-      const sch = normalizeSchemaResponse(data);
-      if (sch) return sch;
-    } catch (e) {
-      // try next
-    }
-  }
-  return null;
-}
+    if (!data?.ok || !Array.isArray(data.columns)) return null;
 
-function fillSchemaDropdowns() {
-  const names = (columns || []).map((c) => c.name);
-
-  // Upsert dropdown (may not exist)
-  if (elUpsertKey) {
-    const candidates = [];
-    if (names.includes("child_name")) candidates.push("child_name");
-    for (const n of names) {
-      if (READONLY_COLS.has(n)) continue;
-      if (!candidates.includes(n)) candidates.push(n);
-    }
-    if (names.includes("id")) candidates.push("id"); // allow viewing, but we block saving with id
-    elUpsertKey.innerHTML = candidates.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
-    if (candidates.includes("child_name")) elUpsertKey.value = "child_name";
-  }
-
-  // Drop column dropdown (may not exist)
-  if (elDropCol) {
-    const droppables = names.filter((n) => !READONLY_COLS.has(n));
-    elDropCol.innerHTML =
-      `<option value=""></option>` +
-      droppables.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
+    // Accept both formats:
+    // 1) {name,type}
+    // 2) {column_name,data_type}
+    return data.columns.map((c) => ({
+      name: String(c.name ?? c.column_name ?? ""),
+      type: String(c.type ?? c.data_type ?? ""),
+    })).filter(x => x.name);
+  } catch {
+    return null;
   }
 }
 
-async function schemaRefresh() {
-  await withBusy("Refreshing schema…", async () => {
-    setBusyProgress(25, "Fetching schema…");
-    const sch = await fetchSchemaSafe();
-    if (!sch) {
-      showMsg("Schema function not available. Table still works, but column add/drop needs your admin Edge Function.", true);
-      return;
-    }
-    columns = reorderColumnsBySchema(sch);
-    fillSchemaDropdowns();
-    setBusyProgress(80, "Reloading data…");
-    await loadPage();
-    setBusyProgress(100, "Done");
+async function addColumn(name, type) {
+  const { data, error } = await sb.functions.invoke(SCHEMA_FN, {
+    body: { action: "add_column", table: STUDENTS_TABLE, name, type },
   });
+  if (error) throw error;
+  if (!data?.ok) throw new Error(data?.error || "add_column failed");
+  return true;
 }
 
-async function schemaAddColumn() {
-  hideMsg();
-  if (!elAddColName || !elAddColType) {
-    return showMsg("Schema UI not present in HTML (missing smAddColName/smAddColType).", true);
-  }
-
-  const name = String(elAddColName.value || "").trim();
-  const type = String(elAddColType.value || "text").trim();
-  if (!name) return showMsg("Column name is required.", true);
-  if (READONLY_COLS.has(name)) return showMsg(`"${name}" is reserved / read-only.`, true);
-
-  await withBusy("Adding column…", async () => {
-    setBusyProgress(30, "Calling schema function…");
-    const { data, error } = await sb.functions.invoke(ALTER_FN, {
-      body: { action: "add_column", table: STUDENTS_TABLE, name, type },
-    });
-    if (error) throw error;
-    if (!data?.ok) throw new Error(data?.error || "add_column failed");
-    setBusyProgress(80, "Refreshing…");
-    elAddColName.value = "";
-    await schemaRefresh();
-    showMsg("Column added ✅");
-  }).catch((e) => showMsg(String(e?.message || e), true));
-}
-
-async function schemaDropColumn() {
-  hideMsg();
-  if (!elDropCol || !elDropConfirm) {
-    return showMsg("Schema UI not present in HTML (missing smDropCol/smDropConfirm).", true);
-  }
-
-  const col = String(elDropCol.value || "").trim();
-  const conf = String(elDropConfirm.value || "no");
-  if (!col) return showMsg("Select a column to drop.", true);
-  if (READONLY_COLS.has(col)) return showMsg(`"${col}" is read-only and cannot be dropped here.`, true);
-  if (conf !== "yes") return showMsg('Set Confirm to "YES" to drop a column.', true);
-  if (!confirm(`Drop column "${col}"? This will delete data in that column.`)) return;
-
-  await withBusy("Dropping column…", async () => {
-    setBusyProgress(30, "Calling schema function…");
-    const { data, error } = await sb.functions.invoke(ALTER_FN, {
-      body: { action: "drop_column", table: STUDENTS_TABLE, name: col },
-    });
-    if (error) throw error;
-    if (!data?.ok) throw new Error(data?.error || "drop_column failed");
-    setBusyProgress(80, "Refreshing…");
-    elDropConfirm.value = "no";
-    await schemaRefresh();
-    showMsg("Column dropped ✅");
-  }).catch((e) => showMsg(String(e?.message || e), true));
+async function dropColumn(name) {
+  const { data, error } = await sb.functions.invoke(SCHEMA_FN, {
+    body: { action: "drop_column", table: STUDENTS_TABLE, name },
+  });
+  if (error) throw error;
+  if (!data?.ok) throw new Error(data?.error || "drop_column failed");
+  return true;
 }
 
 // -------------------- Query --------------------
 function buildQuery({ includeCount = true } = {}) {
-  let q = sb.from(STUDENTS_TABLE).select("*", includeCount ? { count: "exact" } : undefined);
+  const q = sb.from(STUDENTS_TABLE).select("*", includeCount ? { count: "exact" } : undefined);
 
   const s = String(elSearch?.value || "").trim();
   if (s) {
     const escS = s.replace(/,/g, " ");
-    const orParts = [];
+    const colNames = columns.map(c => c.name);
+    const searchCols = ["child_name", "student_name", "class_name", "section", "sr_number"]
+      .filter(c => colNames.includes(c));
 
-    const colNames = (columns || []).map((c) => c.name);
-    const searchCols = ["child_name", "student_name", "class_name", "section", "sr_number"].filter((c) => colNames.includes(c));
-    for (const c of searchCols) orParts.push(`${c}.ilike.%${escS}%`);
+    const parts = (searchCols.length ? searchCols : ["child_name", "student_name", "class_name", "section", "sr_number"])
+      .map(c => `${c}.ilike.%${escS}%`);
 
-    if (!orParts.length) {
-      orParts.push(`child_name.ilike.%${escS}%`);
-      orParts.push(`student_name.ilike.%${escS}%`);
-      orParts.push(`class_name.ilike.%${escS}%`);
-      orParts.push(`section.ilike.%${escS}%`);
-      orParts.push(`sr_number.ilike.%${escS}%`);
-    }
-    q = q.or(orParts.join(","));
+    q.or(parts.join(","));
   }
 
-  const colNames = (columns || []).map((c) => c.name);
-  if (colNames.includes("child_name")) q = q.order("child_name", { ascending: true });
-  else if (colNames.includes("id")) q = q.order("id", { ascending: true });
+  const colNames = columns.map(c => c.name);
+  if (colNames.includes("child_name")) q.order("child_name", { ascending: true });
+  else if (colNames.includes("id")) q.order("id", { ascending: true });
 
   const from = page * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;
-  q = q.range(from, to);
+  q.range(from, to);
 
   return q;
 }
 
 // -------------------- Render --------------------
 function renderHeader() {
-  if (!elThead) return;
-
-  const cols = (columns || []).map((c) => c.name);
+  const cols = columns.map(c => c.name);
   const ths = [];
 
   ths.push(`<tr>`);
   ths.push(`<th class="sm-sticky-1 sm-rownum">#</th>`);
 
   cols.forEach((c, idx) => {
-    const cls = idx === 0 ? "sm-sticky-2" : "";
-    ths.push(`<th class="${cls}">${esc(humanize(c))}</th>`);
+    const sticky = idx === 0 ? "sm-sticky-2" : "";
+    const canDrop = !PROTECTED_COLS.has(c);
+
+    ths.push(`
+      <th class="${sticky} sm-colhead" data-col="${esc(c)}">
+        <div class="sm-colhead-inner">
+          <span class="sm-coltitle">${esc(humanize(c))}</span>
+          ${canDrop ? `<button class="sm-col-del" data-act="drop-col" data-col="${esc(c)}" title="Delete column">🗑</button>` : ""}
+        </div>
+      </th>
+    `);
   });
 
-  ths.push(`<th class="sm-actions">Action</th>`);
-  ths.push(`</tr>`);
+  // Actions header + Add column button at far-right end
+  ths.push(`
+    <th class="sm-actions">
+      <button class="sm-col-add" data-act="add-col" title="Add column">+</button>
+    </th>
+  `);
 
+  ths.push(`</tr>`);
   elThead.innerHTML = ths.join("");
 }
 
-function renderBody() {
-  if (!elTbody) return;
+function trashSvg() {
+  return `
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+    <path d="M4 7h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    <path d="M10 11v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    <path d="M14 11v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    <path d="M6 7l1 14h10l1-14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    <path d="M9 7V4h6v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  </svg>`;
+}
 
-  const cols = (columns || []).map((c) => c.name);
+function renderBody() {
+  const cols = columns.map(c => c.name);
   const html = [];
 
   rows.forEach((r, rIndex) => {
@@ -374,21 +269,20 @@ function renderBody() {
     html.push(`<td class="sm-sticky-1 sm-rownum">${page * PAGE_SIZE + rIndex + 1}</td>`);
 
     cols.forEach((c, cIndex) => {
-      const val = r?.[c] ?? "";
       const sticky = cIndex === 0 ? "sm-sticky-2" : "";
-      const ro = READONLY_COLS.has(c) ? "readonly" : "";
-      const roCls = READONLY_COLS.has(c) ? " sm-readonly" : "";
+      const val = r?.[c] ?? "";
 
+      const isRO = READONLY_COLS.includes(c);
       html.push(`
         <td class="${sticky}">
           <input
-            class="sm-cell${roCls}"
+            class="sm-cell ${isRO ? "sm-readonly" : ""}"
             data-r="${esc(key)}"
             data-col="${esc(c)}"
             data-ri="${rIndex}"
             data-ci="${cIndex}"
             value="${esc(val)}"
-            ${ro}
+            ${isRO ? "readonly" : ""}
           />
         </td>
       `);
@@ -396,7 +290,9 @@ function renderBody() {
 
     html.push(`
       <td class="sm-actions">
-        <button class="btn danger sm-mini" data-act="del" data-r="${esc(key)}" title="Delete">🗑️</button>
+        <button class="sm-icon-btn danger" data-act="del-row" data-r="${esc(key)}" title="Delete row">
+          ${trashSvg()}
+        </button>
       </td>
     `);
 
@@ -405,21 +301,11 @@ function renderBody() {
 
   elTbody.innerHTML = html.join("");
 
-  // bind cell events
+  // cell events
   elTbody.querySelectorAll("input.sm-cell").forEach((inp) => {
-    const col = inp.dataset.col;
-
-    inp.addEventListener("focus", () => {
-      activeCell = {
-        rowKey: inp.dataset.r,
-        col: inp.dataset.col,
-        ri: Number(inp.dataset.ri),
-        ci: Number(inp.dataset.ci),
-      };
-    });
-
     inp.addEventListener("input", () => {
-      if (READONLY_COLS.has(col)) return;
+      const col = inp.dataset.col;
+      if (READONLY_COLS.includes(col)) return;
 
       const key = inp.dataset.r;
       const value = inp.value;
@@ -432,15 +318,11 @@ function renderBody() {
       if (!dirtyByKey.has(key)) dirtyByKey.set(key, {});
       dirtyByKey.get(key)[col] = value;
 
-      markDirtyRow(key);
+      const tr = elTbody.querySelector(`tr[data-key="${CSS.escape(key)}"]`);
+      if (tr) tr.classList.add("sm-dirty");
       markDirtyPill();
     });
   });
-}
-
-function markDirtyRow(key) {
-  const tr = elTbody?.querySelector(`tr[data-key="${CSS.escape(key)}"]`);
-  if (tr) tr.classList.add("sm-dirty");
 }
 
 function updateMeta() {
@@ -454,7 +336,7 @@ function updateMeta() {
   if (elPage) elPage.textContent = `Page ${page + 1} / ${pages}`;
 
   if (elPrev) elPrev.disabled = page <= 0;
-  if (elNext) elNext.disabled = from + PAGE_SIZE >= totalCount;
+  if (elNext) elNext.disabled = (from + PAGE_SIZE) >= totalCount;
 }
 
 // -------------------- Load --------------------
@@ -465,7 +347,7 @@ async function loadPage() {
     setBusyProgress(15, "Fetching schema…");
     const sch = await fetchSchemaSafe();
 
-    setBusyProgress(30, "Fetching data…");
+    setBusyProgress(35, "Fetching data…");
     const { data, error, count } = await buildQuery({ includeCount: true });
     if (error) throw error;
 
@@ -475,32 +357,27 @@ async function loadPage() {
     if (sch) columns = reorderColumnsBySchema(sch);
     else columns = inferColumnsFromRows(rows);
 
-    fillSchemaDropdowns();
-
     setBusyProgress(75, "Rendering…");
     renderHeader();
     renderBody();
     updateMeta();
-    setBusyProgress(100, "Done");
-
     markDirtyPill();
+
+    setBusyProgress(100, "Done");
   }).catch((e) => {
     console.error(e);
     showMsg(String(e?.message || e), true);
   });
 }
 
-// -------------------- Add / Delete / Save --------------------
+// -------------------- Row actions --------------------
 function addRow() {
   hideMsg();
-
   const obj = {};
-  for (const c of columns || []) {
-    if (READONLY_COLS.has(c.name)) continue;
-    obj[c.name] = "";
-  }
 
+  for (const c of columns) obj[c.name] = "";
   obj.__key = `tmp:${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
   const key = getRowKey(obj);
 
   rows.unshift(obj);
@@ -509,13 +386,12 @@ function addRow() {
   renderBody();
   markDirtyPill();
 
-  const first = elTbody?.querySelector(`input.sm-cell[data-r="${CSS.escape(key)}"][data-ci="0"]`);
+  const first = elTbody.querySelector(`input.sm-cell[data-r="${CSS.escape(key)}"][data-ci="0"]`);
   if (first) first.focus();
 }
 
 async function deleteRow(key) {
   hideMsg();
-
   const row = rows.find((r) => getRowKey(r) === key);
   if (!row) return;
 
@@ -545,79 +421,71 @@ async function deleteRow(key) {
   }).catch((e) => showMsg(String(e?.message || e), true));
 }
 
+function stripReadonlyCols(obj) {
+  const out = { ...obj };
+  for (const c of READONLY_COLS) delete out[c];
+  delete out.__key;
+  return out;
+}
+
 async function saveChanges() {
   hideMsg();
 
   if (dirtyByKey.size === 0 && newKeys.size === 0) return showMsg("No changes to save.");
 
-  const upsertKey = getUpsertKeySafe();
-  if (!upsertKey) return showMsg("Upsert key not found.", true);
+  const upsertKey = getPreferredUpsertKey();
 
-  if (upsertKey === "id") {
-    return showMsg('Do not use "id" as Upsert Key. Use "child_name".', true);
-  }
+  const updates = [];
+  const inserts = [];
 
-  const payloads = [];
   for (const [key, patch] of dirtyByKey.entries()) {
-    if (newKeys.has(key)) continue;
-
     const row = rows.find((r) => getRowKey(r) === key);
     if (!row) continue;
 
-    const out = { ...row, ...patch };
-    delete out.__key;
-    delete out.__isNew;
-    stripReadonlyCols(out);
+    const merged = stripReadonlyCols({ ...row, ...patch });
 
-    payloads.push(out);
+    if (newKeys.has(key)) continue; // handled below
+    updates.push(merged);
   }
 
-  const newPayloads = [];
   for (const key of newKeys.values()) {
     const row = rows.find((r) => getRowKey(r) === key);
     if (!row) continue;
 
-    const out = { ...row };
-    delete out.__key;
-    delete out.__isNew;
+    const out = stripReadonlyCols(row);
 
     if (isBlank(out[upsertKey])) {
       return showMsg(`New row is missing "${upsertKey}". Fill it before saving.`, true);
     }
-
-    stripReadonlyCols(out);
-    newPayloads.push(out);
+    inserts.push(out);
   }
 
   await withBusy("Saving changes…", async () => {
-    const total = payloads.length + newPayloads.length;
-    let done = 0;
+    const total = updates.length + inserts.length;
 
-    function bump(stepText) {
-      done++;
-      const pct = Math.min(99, Math.round((done / Math.max(1, total)) * 90) + 10);
-      setBusyProgress(pct, stepText);
-    }
+    const chunk = 200;
 
-    if (payloads.length) {
-      setBusyProgress(10, `Saving ${payloads.length} updates…`);
-      const chunk = 200;
-      for (let i = 0; i < payloads.length; i += chunk) {
-        const batch = payloads.slice(i, i + chunk);
+    if (updates.length) {
+      setBusyProgress(15, `Saving ${updates.length} updates…`);
+      for (let i = 0; i < updates.length; i += chunk) {
+        const batch = updates.slice(i, i + chunk);
         const { error } = await sb.from(STUDENTS_TABLE).upsert(batch, { onConflict: upsertKey });
         if (error) throw error;
-        bump("Updates saved…");
+
+        const pct = 15 + Math.round(((i + batch.length) / total) * 70);
+        setBusyProgress(Math.min(85, pct), `Saved ${Math.min(updates.length, i + batch.length)}/${updates.length}…`);
       }
     }
 
-    if (newPayloads.length) {
-      setBusyProgress(55, `Saving ${newPayloads.length} new rows…`);
-      const chunk = 200;
-      for (let i = 0; i < newPayloads.length; i += chunk) {
-        const batch = newPayloads.slice(i, i + chunk);
+    if (inserts.length) {
+      setBusyProgress(60, `Saving ${inserts.length} new rows…`);
+      for (let i = 0; i < inserts.length; i += chunk) {
+        const batch = inserts.slice(i, i + chunk);
         const { error } = await sb.from(STUDENTS_TABLE).upsert(batch, { onConflict: upsertKey });
         if (error) throw error;
-        bump("New rows saved…");
+
+        const pct = 60 + Math.round(((i + batch.length) / inserts.length) * 30);
+        setBusyProgress(Math.min(95, pct), `Saved ${Math.min(inserts.length, i + batch.length)}/${inserts.length}…`);
       }
     }
 
@@ -631,9 +499,99 @@ async function saveChanges() {
   }).catch((e) => showMsg(String(e?.message || e), true));
 }
 
-// -------------------- Import / Export (kept safe) --------------------
+// -------------------- Import popup --------------------
+function ensureImportModal() {
+  let modal = document.getElementById("smImportModal");
+  if (modal) return modal;
+
+  modal = document.createElement("div");
+  modal.id = "smImportModal";
+  modal.style.cssText = `
+    position: fixed; inset: 0; z-index: 9999;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.55);
+  `;
+
+  modal.innerHTML = `
+    <div style="
+      width: min(720px, calc(100vw - 24px));
+      border-radius: 16px;
+      background: rgba(20,24,32,0.95);
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.55);
+      padding: 16px;
+      color: rgba(255,255,255,0.9);
+    ">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+        <div style="font-weight:700;">Import Students</div>
+        <button id="smImportClose" class="btn sm-mini">Close</button>
+      </div>
+
+      <div style="margin-top:12px; display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+        <div>
+          <div style="font-size:12px; opacity:.8; margin-bottom:6px;">File (CSV or XLSX)</div>
+          <input id="smImportFile" type="file" accept=".csv,.xlsx" style="width:100%;" />
+        </div>
+        <div>
+          <div style="font-size:12px; opacity:.8; margin-bottom:6px;">Mode</div>
+          <select id="smImportMode" style="width:100%; height:36px;">
+            <option value="upsert">Upsert (update existing)</option>
+            <option value="insert">Insert (new only)</option>
+          </select>
+        </div>
+        <div style="grid-column: 1 / -1;">
+          <div style="font-size:12px; opacity:.8; margin-bottom:6px;">Upsert Key (for Upsert mode)</div>
+          <select id="smImportUpsertKey" style="width:100%; height:36px;"></select>
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:14px;">
+        <button id="smImportRun" class="btn primary">Import</button>
+      </div>
+
+      <div style="margin-top:10px; font-size:12px; opacity:.75;">
+        CSV headers should match column names (case-insensitive). Unknown headers are ignored.
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // close handlers
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) closeImportModal();
+  });
+  modal.querySelector("#smImportClose").addEventListener("click", closeImportModal);
+
+  modal.querySelector("#smImportRun").addEventListener("click", () => importFromModal().catch(err => {
+    console.error(err);
+    showMsg(String(err?.message || err), true);
+  }));
+
+  return modal;
+}
+
+function openImportModal() {
+  hideMsg();
+  const modal = ensureImportModal();
+  const sel = modal.querySelector("#smImportUpsertKey");
+
+  const names = columns.map(c => c.name);
+  sel.innerHTML = names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
+
+  const def = getPreferredUpsertKey();
+  sel.value = def;
+
+  modal.style.display = "flex";
+}
+
+function closeImportModal() {
+  const modal = document.getElementById("smImportModal");
+  if (modal) modal.style.display = "none";
+}
+
 function parseCsv(text) {
-  const rows = [];
+  const out = [];
   let cur = [];
   let cell = "";
   let inQuotes = false;
@@ -643,23 +601,17 @@ function parseCsv(text) {
     const next = text[i + 1];
 
     if (ch === '"' && inQuotes && next === '"') {
-      cell += '"';
-      i++;
-      continue;
+      cell += '"'; i++; continue;
     }
-    if (ch === '"') {
-      inQuotes = !inQuotes;
-      continue;
-    }
+    if (ch === '"') { inQuotes = !inQuotes; continue; }
+
     if (!inQuotes && ch === ",") {
-      cur.push(cell);
-      cell = "";
-      continue;
+      cur.push(cell); cell = ""; continue;
     }
     if (!inQuotes && (ch === "\n" || ch === "\r")) {
       if (ch === "\r" && next === "\n") i++;
       cur.push(cell);
-      rows.push(cur);
+      out.push(cur);
       cur = [];
       cell = "";
       continue;
@@ -668,35 +620,30 @@ function parseCsv(text) {
   }
   if (cell.length || cur.length) {
     cur.push(cell);
-    rows.push(cur);
+    out.push(cur);
   }
-  return rows.filter((r) => r.some((x) => String(x).trim() !== ""));
+  return out.filter(r => r.some(x => String(x).trim() !== ""));
 }
 
 function normalizeHeader(h) {
   return String(h || "").trim().toLowerCase();
 }
 
-async function importFile() {
-  hideMsg();
+async function importFromModal() {
+  const modal = ensureImportModal();
+  const file = modal.querySelector("#smImportFile")?.files?.[0];
+  if (!file) return showMsg("Choose a file first.", true);
 
-  if (!elFile || !elImportMode) return showMsg("Import UI elements missing in HTML.", true);
-
-  const file = elFile?.files?.[0];
-  if (!file) return showMsg("Choose a CSV/XLSX file first.", true);
-
-  const mode = String(elImportMode.value || "upsert");
-  const upsertKey = getUpsertKeySafe();
-
-  if (mode === "upsert" && upsertKey === "id") return showMsg('Do not use "id" as Upsert Key for import.', true);
+  const mode = String(modal.querySelector("#smImportMode").value || "upsert");
+  const upsertKey = String(modal.querySelector("#smImportUpsertKey").value || getPreferredUpsertKey());
 
   await withBusy("Importing…", async () => {
     setBusyProgress(10, "Reading file…");
-    const ext = file.name.toLowerCase().endsWith(".xlsx") ? "xlsx" : "csv";
 
+    const isXlsx = file.name.toLowerCase().endsWith(".xlsx");
     let records = [];
 
-    if (ext === "xlsx") {
+    if (isXlsx) {
       const buf = await file.arrayBuffer();
       const wb = window.XLSX.read(buf, { type: "array" });
       const ws = wb.Sheets[wb.SheetNames[0]];
@@ -705,7 +652,7 @@ async function importFile() {
       const text = await file.text();
       const grid = parseCsv(text);
       const headers = grid[0].map(normalizeHeader);
-      records = grid.slice(1).map((r) => {
+      records = grid.slice(1).map(r => {
         const obj = {};
         for (let i = 0; i < headers.length; i++) obj[headers[i]] = r[i] ?? "";
         return obj;
@@ -717,56 +664,57 @@ async function importFile() {
       return showMsg("No rows found in file.", true);
     }
 
-    setBusyProgress(35, "Mapping headers to columns…");
-    const colNames = (columns || []).map((c) => c.name);
-    const colMap = new Map(colNames.map((c) => [normalizeHeader(c), c]));
+    setBusyProgress(35, "Mapping headers…");
+    const colNames = columns.map(c => c.name);
+    const colMap = new Map(colNames.map(c => [normalizeHeader(c), c]));
 
-    const cleaned = records
-      .map((r) => {
-        const out = {};
-        for (const [k, v] of Object.entries(r)) {
-          const real = colMap.get(normalizeHeader(k));
-          if (!real) continue;
-          if (READONLY_COLS.has(real)) continue;
-          out[real] = v;
-        }
-        return out;
-      })
-      .filter((o) => Object.keys(o).length);
+    const cleaned = records.map(r => {
+      const out = {};
+      for (const [k, v] of Object.entries(r)) {
+        const real = colMap.get(normalizeHeader(k));
+        if (!real) continue;
+        if (READONLY_COLS.includes(real)) continue; // never import id/created_at
+        out[real] = v;
+      }
+      return out;
+    }).filter(o => Object.keys(o).length);
 
     if (!cleaned.length) {
       setBusyProgress(100, "Done");
-      return showMsg("No matching headers found.", true);
+      return showMsg("No matching headers found. Make sure file headers match your column names.", true);
     }
 
     if (mode === "upsert") {
-      const bad = cleaned.find((x) => isBlank(x[upsertKey]));
+      const bad = cleaned.find(x => isBlank(x[upsertKey]));
       if (bad) {
         setBusyProgress(100, "Done");
-        return showMsg(`Some rows are missing "${upsertKey}".`, true);
+        return showMsg(`Some rows are missing "${upsertKey}". Fix file and retry.`, true);
       }
     }
 
     setBusyProgress(55, `Writing ${cleaned.length} rows…`);
     const chunk = 200;
+
     for (let i = 0; i < cleaned.length; i += chunk) {
       const batch = cleaned.slice(i, i + chunk);
-      const res =
-        mode === "insert"
-          ? await sb.from(STUDENTS_TABLE).insert(batch)
-          : await sb.from(STUDENTS_TABLE).upsert(batch, { onConflict: upsertKey });
+      const res = (mode === "insert")
+        ? await sb.from(STUDENTS_TABLE).insert(batch)
+        : await sb.from(STUDENTS_TABLE).upsert(batch, { onConflict: upsertKey });
 
       if (res.error) throw res.error;
-      setBusyProgress(Math.min(95, 55 + Math.round((i / cleaned.length) * 40)), `Imported ${Math.min(cleaned.length, i + chunk)}/${cleaned.length}…`);
+
+      const pct = Math.min(95, 55 + Math.round((i / cleaned.length) * 40));
+      setBusyProgress(pct, `Imported ${Math.min(cleaned.length, i + chunk)}/${cleaned.length}…`);
     }
 
     setBusyProgress(100, "Done");
+    closeImportModal();
     showMsg(`Imported ${cleaned.length} rows ✅`);
-    elFile.value = "";
     await loadPage();
-  }).catch((e) => showMsg(String(e?.message || e), true));
+  });
 }
 
+// -------------------- Export --------------------
 async function exportXlsx() {
   hideMsg();
 
@@ -783,14 +731,10 @@ async function exportXlsx() {
       const s = String(elSearch?.value || "").trim();
       if (s) {
         const escS = s.replace(/,/g, " ");
-        q = q.or(
-          `child_name.ilike.%${escS}%,student_name.ilike.%${escS}%,class_name.ilike.%${escS}%,section.ilike.%${escS}%,sr_number.ilike.%${escS}%`
-        );
+        q = q.or(`child_name.ilike.%${escS}%,student_name.ilike.%${escS}%,class_name.ilike.%${escS}%,section.ilike.%${escS}%,sr_number.ilike.%${escS}%`);
       }
 
-      const colNames = (columns || []).map((c) => c.name);
-      if (colNames.includes("child_name")) q = q.order("child_name", { ascending: true });
-      else if (colNames.includes("id")) q = q.order("id", { ascending: true });
+      if (columns.map(c => c.name).includes("child_name")) q = q.order("child_name", { ascending: true });
 
       const { data, error } = await q;
       if (error) throw error;
@@ -809,8 +753,9 @@ async function exportXlsx() {
     }
 
     setBusyProgress(80, "Building XLSX…");
-    const colNames = (columns || []).map((c) => c.name);
-    const out = all.map((r) => {
+    const colNames = columns.map(c => c.name);
+
+    const out = all.map(r => {
       const o = {};
       for (const c of colNames) o[humanize(c)] = r?.[c] ?? "";
       return o;
@@ -825,7 +770,93 @@ async function exportXlsx() {
 
     setBusyProgress(100, "Done");
     showMsg(`Exported ${out.length} rows ✅`);
-  }).catch((e) => showMsg(String(e?.message || e), true));
+  }).catch(e => showMsg(String(e?.message || e), true));
+}
+
+// -------------------- Header schema UI --------------------
+function ensureAddColumnModal() {
+  let modal = document.getElementById("smAddColModal");
+  if (modal) return modal;
+
+  modal = document.createElement("div");
+  modal.id = "smAddColModal";
+  modal.style.cssText = `
+    position: fixed; inset: 0; z-index: 9999;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.55);
+  `;
+  modal.innerHTML = `
+    <div style="
+      width: min(520px, calc(100vw - 24px));
+      border-radius: 16px;
+      background: rgba(20,24,32,0.95);
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.55);
+      padding: 16px;
+      color: rgba(255,255,255,0.9);
+    ">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+        <div style="font-weight:700;">Add Column</div>
+        <button id="smAddColClose" class="btn sm-mini">Close</button>
+      </div>
+
+      <div style="margin-top:12px; display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+        <div style="grid-column:1/-1;">
+          <div style="font-size:12px; opacity:.8; margin-bottom:6px;">Column name</div>
+          <input id="smAddColName" placeholder="e.g. father_name" style="width:100%; height:36px;" />
+        </div>
+        <div style="grid-column:1/-1;">
+          <div style="font-size:12px; opacity:.8; margin-bottom:6px;">Type</div>
+          <select id="smAddColType" style="width:100%; height:36px;">
+            <option value="text">text</option>
+            <option value="integer">integer</option>
+            <option value="bigint">bigint</option>
+            <option value="boolean">boolean</option>
+            <option value="date">date</option>
+            <option value="timestamp with time zone">timestamp with time zone</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:14px;">
+        <button id="smAddColRun" class="btn primary">Add</button>
+      </div>
+      <div style="margin-top:10px; font-size:12px; opacity:.75;">
+        Tip: Use snake_case like <b>father_name</b>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) closeAddColumnModal();
+  });
+  modal.querySelector("#smAddColClose").addEventListener("click", closeAddColumnModal);
+
+  modal.querySelector("#smAddColRun").addEventListener("click", async () => {
+    const name = String(modal.querySelector("#smAddColName").value || "").trim();
+    const type = String(modal.querySelector("#smAddColType").value || "text").trim();
+    if (!name) return showMsg("Column name is required.", true);
+
+    await withBusy("Adding column…", async () => {
+      setBusyProgress(30, "Calling schema function…");
+      await addColumn(name, type);
+      setBusyProgress(80, "Reloading…");
+      closeAddColumnModal();
+      await loadPage();
+      showMsg("Column added ✅");
+    }).catch(e => showMsg(String(e?.message || e), true));
+  });
+
+  return modal;
+}
+
+function openAddColumnModal() {
+  ensureAddColumnModal().style.display = "flex";
+}
+function closeAddColumnModal() {
+  const modal = document.getElementById("smAddColModal");
+  if (modal) modal.style.display = "none";
 }
 
 // -------------------- Events --------------------
@@ -833,41 +864,55 @@ function wireEvents() {
   let t = null;
   elSearch?.addEventListener("input", () => {
     clearTimeout(t);
-    t = setTimeout(() => {
-      page = 0;
-      loadPage();
-    }, 250);
+    t = setTimeout(() => { page = 0; loadPage(); }, 250);
   });
 
   elReload?.addEventListener("click", () => loadPage());
   elAddRow?.addEventListener("click", addRow);
   elSave?.addEventListener("click", saveChanges);
+  elUpload?.addEventListener("click", openImportModal);
   elExport?.addEventListener("click", exportXlsx);
 
-  elPrev?.addEventListener("click", () => {
-    if (page > 0) {
-      page--;
-      loadPage();
-    }
-  });
-  elNext?.addEventListener("click", () => {
-    page++;
-    loadPage();
-  });
+  elPrev?.addEventListener("click", () => { if (page > 0) { page--; loadPage(); } });
+  elNext?.addEventListener("click", () => { page++; loadPage(); });
 
+  // Row delete
   elTbody?.addEventListener("click", (e) => {
-    const btn = e.target.closest("button[data-act='del']");
+    const btn = e.target.closest("button[data-act='del-row']");
     if (!btn) return;
     const key = btn.getAttribute("data-r");
     if (!key) return;
     deleteRow(key);
   });
 
-  elImport?.addEventListener("click", importFile);
+  // Header schema controls: drop column + add column
+  elThead?.addEventListener("click", async (e) => {
+    const dropBtn = e.target.closest("button[data-act='drop-col']");
+    if (dropBtn) {
+      const col = dropBtn.getAttribute("data-col");
+      if (!col) return;
+      if (PROTECTED_COLS.has(col)) return showMsg("This column cannot be deleted.", true);
 
-  elSchemaReload?.addEventListener("click", schemaRefresh);
-  elAddColBtn?.addEventListener("click", schemaAddColumn);
-  elDropColBtn?.addEventListener("click", schemaDropColumn);
+      const typed = prompt(`Type DELETE to drop column "${col}". This will remove all data in that column.`);
+      if (typed !== "DELETE") return;
+
+      await withBusy("Dropping column…", async () => {
+        setBusyProgress(30, "Calling schema function…");
+        await dropColumn(col);
+        setBusyProgress(80, "Reloading…");
+        await loadPage();
+        showMsg("Column dropped ✅");
+      }).catch(err => showMsg(String(err?.message || err), true));
+
+      return;
+    }
+
+    const addBtn = e.target.closest("button[data-act='add-col']");
+    if (addBtn) {
+      openAddColumnModal();
+      return;
+    }
+  });
 }
 
 // -------------------- Boot --------------------
