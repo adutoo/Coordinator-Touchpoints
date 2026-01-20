@@ -651,3 +651,83 @@ body {
 .cs-combo{
   overflow: visible;
 }
+
+.sm-readonly{
+  opacity: .75;
+  cursor: not-allowed;
+}
+.sm-readonly:focus{
+  box-shadow: none !important;
+  border-color: rgba(255,255,255,0.14) !important;
+}
+
+
+/* ===== Sheets-like grid look ===== */
+
+/* Table should fill width */
+.sm-table,
+#smTable {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+/* Grid lines */
+#smTbody td,
+#smThead th {
+  border-right: 1px solid rgba(255,255,255,0.08);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+/* Left border + top border (so grid looks complete) */
+#smThead th:first-child,
+#smTbody td:first-child {
+  border-left: 1px solid rgba(255,255,255,0.08);
+}
+#smThead th {
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+
+/* Remove rounded “pill” look from inputs */
+input.sm-cell {
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+
+  border: none !important;
+  border-radius: 0 !important;
+
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+
+  color: rgba(255,255,255,0.92);
+  font-size: 12px;
+}
+
+/* Focus = like spreadsheet highlight */
+#smTbody td:focus-within {
+  background: rgba(124,92,255,0.10);
+  box-shadow: inset 0 0 0 1px rgba(124,92,255,0.55);
+}
+
+/* Readonly cells look disabled */
+input.sm-cell.sm-readonly {
+  color: rgba(255,255,255,0.55);
+  cursor: not-allowed;
+}
+
+/* Remove any td padding that makes it look like pills */
+#smTbody td {
+  padding: 0;
+}
+
+/* Header spacing */
+#smThead th {
+  padding: 10px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.80);
+  background: rgba(0,0,0,0.25);
+}
