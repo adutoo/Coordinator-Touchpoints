@@ -1,1 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Coordinator Touchpoints — Students Admin</title>
+  <link rel="stylesheet" href="css/styles.css" />
 
+  <style>
+    /* make table take full space */
+    .sm-tablewrap { width: 100%; overflow: auto; }
+    .sm-table { width: 100%; min-width: max-content; border-collapse: separate; border-spacing: 0; }
+
+    /* header layout: label + delete icon */
+    .sm-th {
+      position: relative;
+      white-space: nowrap;
+    }
+    .sm-th-inner {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      justify-content: space-between;
+    }
+    .sm-col-del {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(1px);
+      border: 0;
+      background: transparent;
+      color: rgba(255,255,255,0.75);
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 8px;
+    }
+    th.sm-th:hover .sm-col-del {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .sm-col-del:hover {
+      background: rgba(255,255,255,0.08);
+      color: rgba(255,120,140,0.95);
+    }
+
+    /* action header: right-end "+" */
+    .sm-addcol-btn {
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(0,0,0,0.18);
+      color: rgba(255,255,255,0.9);
+      cursor: pointer;
+      border-radius: 12px;
+      padding: 6px 10px;
+      font-size: 18px;
+      line-height: 1;
+    }
+    .sm-addcol-btn:hover {
+      border-color: rgba(124,92,255,0.55);
+      box-shadow: 0 0 0 2px rgba(124,92,255,0.18);
+    }
+
+    /* row delete icon button */
+    .sm-icon-btn {
+      border: 0;
+      background: transparent;
+      color: rgba(255,255,255,0.8);
+      cursor: pointer;
+      padding: 6px;
+      border-radius: 10px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .sm-icon-btn:hover {
+      background: rgba(255,255,255,0.08);
+      color: rgba(255,120,140,0.95);
+    }
+
+    /* top toolbar */
+    .sm-toolbar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      margin: 10px 0 12px;
+    }
+    .sm-toolbar .left, .sm-toolbar .right {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .sm-search {
+      min-width: 260px;
+      width: min(420px, 100%);
+    }
+
+    /* modal */
+    .sm-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.55);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      padding: 16px;
+    }
+    .sm-modal.open { display: flex; }
+    .sm-modal-card {
+      width: min(720px, 96vw);
+      background: rgba(10,10,16,0.92);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 18px;
+      box-shadow: 0 18px 50px rgba(0,0,0,0.6);
+      overflow: hidden;
+    }
+    .sm-modal-head {
+      padding: 14px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .sm-modal-body { padding: 14px; }
+    .sm-modal-head h3 { margin: 0; font-size: 14px; color: rgba(255,255,255,0.92); }
+    .sm-close {
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(0,0,0,0.18);
+      color: rgba(255,255,255,0.9);
+      cursor: pointer;
+      border-radius: 12px;
+      padding: 8px 10px;
+    }
+    .sm-close:hover { border-color: rgba(124,92,255,0.55); }
+
+    /* Supabase-like inputs (dark, subtle border, soft focus ring) */
+.sm-cell,
+.sm-search {
+  width: 100%;
+  box-sizing: border-box;
+
+  height: 34px;
+  padding: 7px 10px;
+
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.06);
+
+  color: rgba(255,255,255,0.92);
+  font-size: 12px;
+  line-height: 1.2;
+
+  outline: none;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+
+.sm-cell:hover,
+.sm-search:hover {
+  border-color: rgba(255,255,255,0.22);
+  background: rgba(255,255,255,0.08);
+}
+
+.sm-cell:focus,
+.sm-search:focus {
+  border-color: rgba(124,92,255,0.75);
+  background: rgba(255,255,255,0.10);
+  box-shadow: 0 0 0 3px rgba(124,92,255,0.20);
+}
+
+.sm-cell::placeholder,
+.sm-search::placeholder {
+  color: rgba(255,255,255,0.45);
+}
+
+/* Make table cell inputs look "embedded" like Supabase */
+td .sm-cell {
+  background: rgba(255,255,255,0.05);
+}
+
+/* Optional: read-only fields styling (if you later set readonly for id/created_at) */
+.sm-cell[readonly],
+.sm-cell:disabled {
+  opacity: 0.70;
+  cursor: not-allowed;
+}
+
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div id="navHolder"></div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="row" style="justify-content:space-between; align-items:flex-start; gap:12px;">
+          <div>
+            <h2 style="margin:0;">Students Database (Admin)</h2>
+            <p class="muted" style="margin-top:6px;">Spreadsheet-like editor. Changes reflect everywhere because data is read from this table.</p>
+          </div>
+          <div class="pill" id="smDirtyPill" style="display:none;">Unsaved changes</div>
+        </div>
+
+        <div class="sm-toolbar">
+          <div class="left">
+            <input id="smSearch" class="sm-search" type="text" placeholder="Search (name/class/section/sr number)..." />
+          </div>
+          <div class="right">
+            <button id="smReload" class="btn" type="button">Refresh</button>
+            <button id="smAddRow" class="btn" type="button">+ Row</button>
+            <button id="smSave" class="btn primary" type="button">Save</button>
+
+            <!-- ✅ Upload button at top of table -->
+            <button id="smUploadOpen" class="btn" type="button">Upload</button>
+
+            <button id="smExport" class="btn" type="button">Export XLSX</button>
+          </div>
+        </div>
+
+        <div id="smMsg" class="notice" style="display:none;"></div>
+
+        <div class="row" style="justify-content:space-between; margin-top:10px;">
+          <div id="smMetaTop" class="muted"></div>
+          <div class="row" style="gap:10px;">
+            <button id="smPrev" class="btn" type="button">Prev</button>
+            <div id="smPage" class="muted"></div>
+            <button id="smNext" class="btn" type="button">Next</button>
+          </div>
+        </div>
+        <div id="smMeta" class="muted" style="margin-top:6px;"></div>
+
+        <div class="sm-tablewrap" style="margin-top:10px;">
+          <table class="sm-table">
+            <thead id="smThead"></thead>
+            <tbody id="smTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ✅ Import Modal -->
+  <div id="smImportModal" class="sm-modal" aria-hidden="true">
+    <div class="sm-modal-card">
+      <div class="sm-modal-head">
+        <h3>Import Students (CSV/XLSX)</h3>
+        <button id="smImportClose" class="sm-close" type="button">Close</button>
+      </div>
+      <div class="sm-modal-body">
+        <div class="form">
+          <div class="field span12">
+            <label>File</label>
+            <input id="smFile" type="file" accept=".csv,.xlsx" />
+          </div>
+
+          <div class="field span6">
+            <label>Import Mode</label>
+            <select id="smImportMode">
+              <option value="upsert" selected>Upsert (recommended)</option>
+              <option value="insert">Insert only</option>
+            </select>
+          </div>
+
+          <div class="field span6">
+            <label>Upsert Key (for Upsert mode)</label>
+            <select id="smUpsertKey"></select>
+          </div>
+
+          <div class="field span12">
+            <div class="row" style="justify-content:flex-end; gap:10px;">
+              <button id="smImport" class="btn primary" type="button">Import</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ✅ Add Column Modal -->
+  <div id="smColModal" class="sm-modal" aria-hidden="true">
+    <div class="sm-modal-card">
+      <div class="sm-modal-head">
+        <h3>Add Column</h3>
+        <button id="smColClose" class="sm-close" type="button">Close</button>
+      </div>
+      <div class="sm-modal-body">
+        <div class="form">
+          <div class="field span6">
+            <label>Column Name</label>
+            <input id="smAddColName" type="text" placeholder="e.g. father_name" />
+          </div>
+          <div class="field span6">
+            <label>Type</label>
+            <select id="smAddColType">
+              <option value="text" selected>text</option>
+              <option value="integer">integer</option>
+              <option value="bigint">bigint</option>
+              <option value="numeric">numeric</option>
+              <option value="boolean">boolean</option>
+              <option value="date">date</option>
+              <option value="timestamp with time zone">timestamptz</option>
+              <option value="jsonb">jsonb</option>
+              <option value="uuid">uuid</option>
+              <option value="varchar(50)">varchar(50)</option>
+              <option value="varchar(100)">varchar(100)</option>
+            </select>
+          </div>
+
+          <div class="field span12">
+            <div class="row" style="justify-content:flex-end; gap:10px;">
+              <button id="smAddColBtn" class="btn primary" type="button">Add Column</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script type="module" src="js/studentsAdmin.js"></script>
+</body>
+</html>
