@@ -353,6 +353,43 @@
         <div id="ticketMsg" class="notice" style="display:none;"></div>
       </div>
 
+            <!-- ✅ Manage Referral Status Dropdown -->
+      <div class="card span6">
+        <h2>Manage Referral Status Dropdown</h2>
+        <p class="muted">Controls the Referral Status options used in Entry page.</p>
+
+        <form id="addReferralForm" class="form">
+          <div class="field span8">
+            <label>Referral Status Label</label>
+            <input id="refLabel" type="text" placeholder="e.g., Not Started / In Progress / Done" required />
+          </div>
+          <div class="field span4">
+            <label>Sort Order</label>
+            <input id="refSort" type="number" value="100" />
+          </div>
+          <div class="field span12">
+            <button class="btn primary" type="submit">Add Status</button>
+          </div>
+        </form>
+
+        <div class="tablewrap maxh">
+          <table>
+            <thead>
+              <tr>
+                <th>Label</th>
+                <th>Sort</th>
+                <th>Active</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="referralRows"></tbody>
+          </table>
+        </div>
+
+        <div id="referralMsg" class="notice" style="display:none;"></div>
+      </div>
+
+
       <!-- ✅ Manage Ticket Statuses -->
       <div class="card span6">
         <h2>Manage Ticket Statuses</h2>
