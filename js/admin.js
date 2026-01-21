@@ -13,6 +13,8 @@ const stuDelMsg = document.getElementById("stuDelMsg");
 const medMsg = document.getElementById("medMsg");
 const objMsg = document.getElementById("objMsg");
 const ticketMsg = document.getElementById("ticketMsg");
+// ✅ Referral Status
+const referralMsg = document.getElementById("referralMsg");
 
 // Ticket Status
 const statusMsg = document.getElementById("statusMsg");
@@ -72,6 +74,7 @@ let ticketDepartments = [];
 // ✅ app_settings keys for call feature
 const CALL_PROMPT_KEY = "call_summary_prompt";
 const COORD_CFG_KEY = "coordinators_config";
+const REFERRAL_OPTIONS_TABLE = "referral_status_options";
 
 // -------------------- settings helpers --------------------
 async function readAppSetting(key) {
@@ -145,6 +148,9 @@ function setSelectOptions(selectEl, items, getValue, getLabel) {
 
     // Ticket Status
     wireAddTicketStatus();
+
+    // ✅ Referral Status
+    wireAddReferralStatus();
 
     // Ticket validation wires
     wireAddIrby();
@@ -1071,6 +1077,114 @@ async function refreshTicketStatuses() {
   });
 }
 
+// -------------------- ✅ Referral Status Options --------------------
+function wireAddReferralStatus() {
+  const form = document.getElementById("addReferralForm");
+  if (!form) return;
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    hide(referralMsg);
+
+    await runBusy("Saving referral status…", async () => {
+      const label = document.getElementById("refLabel")?.value?.trim() || "";
+      const sort_order = Number(document.getElementById("refSort")?.value || 100);
+
+      if (!label) return show(referralMsg, "Referral Status Label is required.", true);
+
+      const { error } = await sb.from(REFERRAL_OPTIONS_TABLE).insert({
+        label,
+        is_active: true,
+        sort_order,
+      });
+
+      if (error) return show(referralMsg, error.message, true);
+
+      show(referralMsg, "Referral status added ✅");
+      form.reset();
+      const s = document.getElementById("refSort");
+      if (s) s.value = "100";
+
+      await refreshReferralStatuses();
+    });
+  });
+}
+
+async function refreshReferralStatuses() {
+  hide(referralMsg);
+
+  const rows = document.getElementById("referralRows");
+  if (!rows) return;
+
+  rows.innerHTML = `<tr><td colspan="4">Loading…</td></tr>`;
+
+  const { data, error } = await sb
+    .from(REFERRAL_OPTIONS_TABLE)
+    .select("id,label,is_active,sort_order")
+    .order("sort_order")
+    .order("label");
+
+  if (error) {
+    rows.innerHTML = `<tr><td colspan="4">${escapeHtml(error.message)}</td></tr>`;
+    return;
+  }
+
+  rows.innerHTML = (data || [])
+    .map(
+      (r) => `
+    <tr>
+      <td>${escapeHtml(r.label)}</td>
+      <td>
+        <input
+          type="number"
+          data-ref-sort="${r.id}"
+          value="${Number(r.sort_order ?? 100)}"
+          style="width:90px;border-radius:12px;border:1px solid rgba(255,255,255,0.14);background:rgba(0,0,0,0.22);color:rgba(255,255,255,0.92);padding:8px 10px;"
+        />
+      </td>
+      <td>${r.is_active ? "Yes" : "No"}</td>
+      <td class="row">
+        <button class="btn" data-act="saveRef" data-id="${r.id}">Save</button>
+        <button class="btn" data-act="toggleRef" data-id="${r.id}" data-val="${r.is_active ? "0" : "1"}">
+          ${r.is_active ? "Deactivate" : "Activate"}
+        </button>
+      </td>
+    </tr>
+  `
+    )
+    .join("");
+
+  rows.querySelectorAll("button[data-act='saveRef']").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      await runBusy("Saving…", async () => {
+        const id = Number(btn.dataset.id);
+        const sort_order = Number(rows.querySelector(`input[data-ref-sort="${id}"]`)?.value || 100);
+
+        const { error } = await sb.from(REFERRAL_OPTIONS_TABLE).update({ sort_order }).eq("id", id);
+        if (error) return show(referralMsg, error.message, true);
+
+        show(referralMsg, "Saved ✅");
+        await refreshReferralStatuses();
+      });
+    });
+  });
+
+  rows.querySelectorAll("button[data-act='toggleRef']").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      await runBusy("Updating…", async () => {
+        const id = Number(btn.dataset.id);
+        const is_active = btn.dataset.val === "1";
+
+        const { error } = await sb.from(REFERRAL_OPTIONS_TABLE).update({ is_active }).eq("id", id);
+        if (error) return show(referralMsg, error.message, true);
+
+        await refreshReferralStatuses();
+      });
+    });
+  });
+}
+
+
 // -------------------- Ticket Validation: Issue Raised By --------------------
 function wireAddIrby() {
   const form = document.getElementById("addIrbyForm");
@@ -1576,6 +1690,9 @@ async function refreshAll() {
 
   setBusyProgress(45, "Loading ticket statuses…");
   await refreshTicketStatuses();
+
+  setBusyProgress(50, "Loading referral statuses…");
+  await refreshReferralStatuses();
 
   setBusyProgress(55, "Counting students…");
   await refreshStudentsCount();
