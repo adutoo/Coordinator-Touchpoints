@@ -787,6 +787,30 @@ async function importFromModal() {
 }
 
 // -------------------- Export --------------------
+
+function buildExportColNames(allRows) {
+  const keys = new Set();
+
+  // keys present in DB rows
+  for (const r of allRows || []) {
+    for (const k of Object.keys(r || {})) keys.add(k);
+  }
+
+  // also include current UI columns (in case DB returned empty set)
+  for (const c of columns || []) keys.add(c.name);
+
+  keys.delete("__key");
+
+  const list = Array.from(keys);
+
+  // pinned first, then rest sorted
+  const pinned = PINNED_COLS.filter((c) => list.includes(c));
+  const rest = list.filter((c) => !pinned.includes(c)).sort((a, b) => a.localeCompare(b));
+
+  return [...pinned, ...rest];
+}
+
+
 async function exportXlsx() {
   hideMsg();
 
@@ -827,7 +851,9 @@ async function exportXlsx() {
     }
 
     setBusyProgress(80, "Building XLSX…");
-    const colNames = columns.map((c) => c.name);
+
+    // ✅ IMPORTANT FIX: derive columns from actual fetched rows (ensures new cols like referral_status are included)
+    const colNames = buildExportColNames(all);
 
     const out = all.map((r) => {
       const o = {};
@@ -846,6 +872,7 @@ async function exportXlsx() {
     showMsg(`Exported ${out.length} rows ✅`);
   }).catch((e) => showMsg(String(e?.message || e), true));
 }
+
 
 // -------------------- Add Column modal --------------------
 function ensureAddColumnModal() {
