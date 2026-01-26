@@ -15,9 +15,9 @@ const msg = document.getElementById("msg");
 const TICKETS_TABLE = "tickets";
 const TICKET_SELECT_SAFE = "ticket_number,department,category,subject,student_name,student_child_name,raised_at";
 
-// ✅ NEW: Referral status options table
+// ✅ Referral status options table
 const REFERRAL_OPTIONS_TABLE = "referral_status_options";
-// ✅ NEW: students column name (snake_case)
+// ✅ students column name (snake_case)
 const STUDENT_REFERRAL_COL = "referral_status";
 
 let students = [];
@@ -119,13 +119,17 @@ function tryApplyPrefillToFirstBlock() {
   if (refs.medium && mediumLabel) {
     refs.medium.value = mediumLabel;
     refs.medium.dispatchEvent(new Event("change", { bubbles: true }));
-    try { refreshSelect(refs.medium); } catch {}
+    try {
+      refreshSelect(refs.medium);
+    } catch {}
   }
 
   if (__callPrefill.child_name && refs.child) {
     refs.child.value = __callPrefill.child_name;
     refs.child.dispatchEvent(new Event("change", { bubbles: true }));
-    try { refreshSelect(refs.child); } catch {}
+    try {
+      refreshSelect(refs.child);
+    } catch {}
   }
 
   if (refs.positives) refs.positives.dispatchEvent(new Event("input", { bubbles: true }));
@@ -220,7 +224,7 @@ function blockRefs(block) {
     medium: q('select[data-field="medium"]'),
     objective: q('select[data-field="objective"]'),
 
-    // ✅ NEW
+    // ✅ Referral status dropdown
     referralStatus: q('select[data-field="referralStatus"]'),
 
     positives: q('textarea[data-field="positives"]'),
@@ -245,6 +249,21 @@ function blockRefs(block) {
   };
 }
 
+function ensureOptionExists(selectEl, value) {
+  if (!selectEl) return;
+  const v = String(value ?? "").trim();
+  if (!v) return;
+
+  const exists = Array.from(selectEl.options || []).some((o) => o.value === v);
+  if (exists) return;
+
+  // Add a hidden option so it can display even if admin removed option later
+  const opt = document.createElement("option");
+  opt.value = v;
+  opt.textContent = v;
+  selectEl.appendChild(opt);
+}
+
 function fillStudentAuto(refs) {
   const s = studentsByChild.get(refs.child.value);
   refs.studentName.value = s?.student_name ?? "";
@@ -252,10 +271,14 @@ function fillStudentAuto(refs) {
   refs.section.value = s?.section ?? "";
   refs.srNumber.value = s?.sr_number ?? "";
 
-  // ✅ NEW: prefill referral status from students table (if present)
+  // ✅ Prefill referral status from students table (if present)
   if (refs.referralStatus) {
-    refs.referralStatus.value = s?.[STUDENT_REFERRAL_COL] ?? "";
-    try { refreshSelect(refs.referralStatus); } catch {}
+    const current = s?.[STUDENT_REFERRAL_COL] ?? "";
+    ensureOptionExists(refs.referralStatus, current);
+    refs.referralStatus.value = current || "";
+    try {
+      refreshSelect(refs.referralStatus);
+    } catch {}
   }
 }
 
@@ -500,63 +523,60 @@ async function updateTicketsForChild(refs, keepTyped = "") {
 }
 
 function enhanceBlockSelects(refs) {
-  enhanceSelect(refs.child, { placeholder: "Select child...", search: true, searchThreshold: 0 });
-  enhanceSelect(refs.medium, { placeholder: "Select medium..." });
-  enhanceSelect(refs.objective, { placeholder: "Select objective..." });
+  if (refs.child) enhanceSelect(refs.child, { placeholder: "Select child...", search: true, searchThreshold: 0 });
+  if (refs.medium) enhanceSelect(refs.medium, { placeholder: "Select medium..." });
+  if (refs.objective) enhanceSelect(refs.objective, { placeholder: "Select objective..." });
 
-  // ✅ NEW
-  enhanceSelect(refs.referralStatus, { placeholder: "Referral Status (Optional)" });
+  // ✅ Referral dropdown (safe)
+  if (refs.referralStatus) enhanceSelect(refs.referralStatus, { placeholder: "Referral Status (Optional)" });
 
-  enhanceSelect(refs.ticketRaised, { placeholder: "Ticket raised? (Optional)" });
+  if (refs.ticketRaised) enhanceSelect(refs.ticketRaised, { placeholder: "Ticket raised? (Optional)" });
 
-  refreshSelect(refs.child);
-  refreshSelect(refs.medium);
-  refreshSelect(refs.objective);
-
-  // ✅ NEW
-  refreshSelect(refs.referralStatus);
-
-  refreshSelect(refs.ticketRaised);
+  try { if (refs.child) refreshSelect(refs.child); } catch {}
+  try { if (refs.medium) refreshSelect(refs.medium); } catch {}
+  try { if (refs.objective) refreshSelect(refs.objective); } catch {}
+  try { if (refs.referralStatus) refreshSelect(refs.referralStatus); } catch {}
+  try { if (refs.ticketRaised) refreshSelect(refs.ticketRaised); } catch {}
 }
 
 function createBlock(cloneFrom = null) {
   const node = tpl.content.firstElementChild.cloneNode(true);
   const refs = blockRefs(node);
 
-  refs.child.innerHTML =
-    `<option value=""></option>` +
-    students.map((s) => `<option value="${escAttr(s.child_name)}">${escText(s.child_name)}</option>`).join("");
+  if (refs.child) {
+    refs.child.innerHTML =
+      `<option value=""></option>` +
+      students.map((s) => `<option value="${escAttr(s.child_name)}">${escText(s.child_name)}</option>`).join("");
+  }
 
-  refs.medium.innerHTML = buildOptions(mediums, "label", "label");
-  refs.objective.innerHTML = buildOptions(objectives, "label", "label");
+  if (refs.medium) refs.medium.innerHTML = buildOptions(mediums, "label", "label");
+  if (refs.objective) refs.objective.innerHTML = buildOptions(objectives, "label", "label");
+  if (refs.ticketRaised) refs.ticketRaised.innerHTML = buildOptions(ticketOptions, "label", "label");
 
-  // ✅ NEW
-  refs.referralStatus.innerHTML = buildOptions(referralOptions, "label", "label");
+  // ✅ Referral options
+  if (refs.referralStatus) refs.referralStatus.innerHTML = buildOptions(referralOptions, "label", "label");
 
-  refs.ticketRaised.innerHTML = buildOptions(ticketOptions, "label", "label");
-
-  refs.timeAuto.value = "1 min";
-  refs.tsAuto.value = "";
+  if (refs.timeAuto) refs.timeAuto.value = "1 min";
+  if (refs.tsAuto) refs.tsAuto.value = "";
 
   installTicketCombo(refs);
 
-  refs.child.addEventListener("change", async () => {
+  refs.child?.addEventListener("change", async () => {
     fillStudentAuto(refs); // also fills referralStatus from student record
     await updateTicketsForChild(refs, "");
-    refreshSelect(refs.child);
+    try { refreshSelect(refs.child); } catch {}
   });
 
-  refs.medium.addEventListener("change", () => {
+  refs.medium?.addEventListener("change", () => {
     fillTimeAuto(refs);
-    refreshSelect(refs.medium);
+    try { refreshSelect(refs.medium); } catch {}
   });
 
-  // ✅ NEW
-  refs.referralStatus.addEventListener("change", () => {
+  refs.referralStatus?.addEventListener("change", () => {
     try { refreshSelect(refs.referralStatus); } catch {}
   });
 
-  refs.removeBtn.addEventListener("click", () => {
+  refs.removeBtn?.addEventListener("click", () => {
     node.remove();
     refreshNumbers();
   });
@@ -567,17 +587,19 @@ function createBlock(cloneFrom = null) {
     const srcCombo = src.ticketNumberHost?._ticketCombo;
     clonedTicket = srcCombo?.input?.value || "";
 
-    refs.child.value = src.child.value;
-    refs.medium.value = src.medium.value;
-    refs.objective.value = src.objective.value;
+    if (refs.child) refs.child.value = src.child?.value || "";
+    if (refs.medium) refs.medium.value = src.medium?.value || "";
+    if (refs.objective) refs.objective.value = src.objective?.value || "";
+    if (refs.ticketRaised) refs.ticketRaised.value = src.ticketRaised?.value || "";
 
-    // ✅ NEW
-    refs.referralStatus.value = src.referralStatus?.value || "";
+    if (refs.referralStatus) {
+      const v = src.referralStatus?.value || "";
+      ensureOptionExists(refs.referralStatus, v);
+      refs.referralStatus.value = v;
+    }
 
-    refs.ticketRaised.value = src.ticketRaised.value;
-
-    refs.positives.value = src.positives.value;
-    refs.suggestion.value = src.suggestion.value;
+    if (refs.positives) refs.positives.value = src.positives?.value || "";
+    if (refs.suggestion) refs.suggestion.value = src.suggestion?.value || "";
   }
 
   fillStudentAuto(refs);
@@ -587,7 +609,7 @@ function createBlock(cloneFrom = null) {
   enhanceBlockSelects(refs);
   refreshNumbers();
 
-  if (refs.child.value) {
+  if (refs.child?.value) {
     updateTicketsForChild(refs, clonedTicket).catch(console.error);
   }
 
@@ -604,14 +626,10 @@ function createBlock(cloneFrom = null) {
       setBusyProgress(null, "Fetching students, mediums, objectives…");
 
       const [stu, med, obj, tick, refOpt] = await Promise.all([
-        // ✅ NEW: also fetch referral_status from students
         fetchAll("students", `child_name,student_name,class_name,section,sr_number,${STUDENT_REFERRAL_COL}`, "child_name"),
-
         sb.from("mediums").select("label,time_min,is_active,sort_order").eq("is_active", true).order("sort_order").order("label"),
         sb.from("objectives").select("label,is_active,sort_order").eq("is_active", true).order("sort_order").order("label"),
         sb.from("ticket_raised_options").select("label,is_active,sort_order").eq("is_active", true).order("sort_order").order("label"),
-
-        // ✅ NEW: referral status options (admin controlled)
         sb.from(REFERRAL_OPTIONS_TABLE).select("label,is_active,sort_order").eq("is_active", true).order("sort_order").order("label"),
       ]);
 
@@ -622,7 +640,6 @@ function createBlock(cloneFrom = null) {
       objectives = obj.data || [];
       ticketOptions = tick.data || [];
 
-      // ✅ NEW
       if (refOpt?.error) {
         console.warn("Referral options fetch failed:", refOpt.error);
         referralOptions = [];
@@ -653,13 +670,13 @@ function createBlock(cloneFrom = null) {
 })();
 
 // -------------------- UI actions --------------------
-addEntryBtn.addEventListener("click", () => {
+addEntryBtn?.addEventListener("click", () => {
   const blocks = Array.from(entriesEl.querySelectorAll(".tp-entry"));
   const last = blocks[blocks.length - 1] || null;
   createBlock(last);
 });
 
-resetBtn.addEventListener("click", () => {
+resetBtn?.addEventListener("click", () => {
   hideMsg();
   entriesEl.innerHTML = "";
   createBlock(null);
@@ -670,7 +687,7 @@ resetBtn.addEventListener("click", () => {
 });
 
 // -------------------- Save --------------------
-form.addEventListener("submit", async (e) => {
+form?.addEventListener("submit", async (e) => {
   e.preventDefault();
   hideMsg();
 
@@ -687,25 +704,25 @@ form.addEventListener("submit", async (e) => {
 
   const payloads = [];
 
-  // ✅ NEW: collect referral updates per child (only if filled)
+  // ✅ Collect referral updates per child (only if filled)
   const referralUpdates = new Map(); // child_name -> referral_status
 
   for (let i = 0; i < blocks.length; i++) {
     const refs = blockRefs(blocks[i]);
 
-    const child_name = refs.child.value;
-    const medium = refs.medium.value;
-    const objective = refs.objective.value;
+    const child_name = refs.child?.value || "";
+    const medium = refs.medium?.value || "";
+    const objective = refs.objective?.value || "";
 
     if (!child_name || !medium || !objective) {
       return show(`Entry #${i + 1}: Please select Child Name, Medium, and Objective.`, true);
     }
 
     const s = studentsByChild.get(child_name);
-    const positives = refs.positives.value.trim();
-    const suggestion = refs.suggestion.value.trim();
+    const positives = refs.positives?.value?.trim() || "";
+    const suggestion = refs.suggestion?.value?.trim() || "";
 
-    const ticket_raised = refs.ticketRaised.value ? refs.ticketRaised.value : null;
+    const ticket_raised = refs.ticketRaised?.value ? refs.ticketRaised.value : null;
     const combo = refs.ticketNumberHost?._ticketCombo;
     const ticket_number = combo?.input?.value?.trim() || "";
 
@@ -715,11 +732,9 @@ form.addEventListener("submit", async (e) => {
     const comments_concat =
       positives && suggestion ? `${positives}\n${suggestion}` : positives ? positives : suggestion ? suggestion : "";
 
-    // ✅ NEW: referral status capture (optional)
+    // ✅ Referral status capture (optional)
     const referral_status = (refs.referralStatus?.value || "").trim();
-    if (referral_status) {
-      referralUpdates.set(child_name, referral_status);
-    }
+    if (referral_status) referralUpdates.set(child_name, referral_status);
 
     payloads.push({
       child_name,
@@ -752,15 +767,16 @@ form.addEventListener("submit", async (e) => {
       time_min,
     });
 
-    refs.tsAuto.value = fmtLocalTS(now);
+    if (refs.tsAuto) refs.tsAuto.value = fmtLocalTS(now);
   }
 
+  // Save
   await withBusy(`Saving ${payloads.length} entries…`, async () => {
-    // 1) Save touchpoints first (main action)
+    // 1) Save touchpoints
     const { error } = await sb.from("touchpoints").insert(payloads);
     if (error) throw error;
 
-    // 2) ✅ Update students referral_status (secondary action)
+    // 2) Update students referral_status
     if (referralUpdates.size) {
       setBusyProgress(null, "Updating Referral Status…");
 
@@ -769,7 +785,6 @@ form.addEventListener("submit", async (e) => {
         referral_status,
       }));
 
-      // Run updates in parallel (small count normally)
       const results = await Promise.all(
         updates.map((u) =>
           sb
@@ -784,13 +799,22 @@ form.addEventListener("submit", async (e) => {
         .filter(({ r }) => r?.error);
 
       if (failed.length) {
+        const failedNames = failed
+          .map(({ idx }) => updates[idx]?.child_name)
+          .filter(Boolean)
+          .slice(0, 8);
+
         console.warn("Referral status update failures:", failed.map((x) => x.r.error));
+
+        // 🔥 Make it very obvious
         show(
-          `Saved entries ✅ but Referral Status update failed for ${failed.length} student(s). Check permissions/RLS.`,
+          `Touchpoints saved ✅ but Referral Status was NOT saved for ${failed.length} student(s): ${failedNames.join(
+            ", "
+          )}${failed.length > failedNames.length ? "…" : ""}. This is a permissions (RLS) issue — ask admin to allow coordinators to UPDATE students.`,
           true
         );
       } else {
-        // also update local cache so future blocks auto-fill correctly without reload
+        // update local cache
         for (const [child_name, referral_status] of referralUpdates.entries()) {
           const obj = studentsByChild.get(child_name);
           if (obj) obj[STUDENT_REFERRAL_COL] = referral_status;
@@ -802,7 +826,12 @@ form.addEventListener("submit", async (e) => {
     throw err;
   });
 
-  show(`Saved ${payloads.length} entries ✅`);
+  // If msg already showing error (referral failed), don't overwrite it
+  if (!msg || msg.style.display === "none" || !String(msg.textContent || "").includes("Referral Status was NOT saved")) {
+    show(`Saved ${payloads.length} entries ✅`);
+    setTimeout(hideMsg, 1400);
+  }
+
   entriesEl.innerHTML = "";
   createBlock(null);
 });
