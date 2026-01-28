@@ -114,12 +114,17 @@ function reorderColumnsBySchema(schemaCols) {
   return [...pinned, ...rest].map((n) => schemaCols.find((x) => x.name === n));
 }
 
+/**
+ * ✅ FIX: Row keys MUST be stable.
+ * Always use __key for UI tracking, so it does not change when child_name is typed.
+ */
 function getRowKey(row) {
+  if (row?.__key) return String(row.__key);
+  // fallback (should rarely happen)
   if (row?.id !== undefined && row?.id !== null && String(row.id) !== "") return `id:${row.id}`;
-  const cn = row?.child_name;
-  if (cn !== undefined && cn !== null && String(cn).trim() !== "") return `child:${String(cn).trim()}`;
-  return row?.__key || `tmp:${Math.random().toString(16).slice(2)}`;
+  return `tmp:${Math.random().toString(16).slice(2)}`;
 }
+
 function parseKey(k) {
   const s = String(k || "");
   if (s.startsWith("id:")) return { field: "id", value: s.slice(3) };
@@ -228,12 +233,11 @@ function buildQuery({ includeCount = true } = {}) {
   if (s) {
     const escS = s.replace(/,/g, " ");
     const colNames = columns.map((c) => c.name);
-    const searchCols = ["child_name", "student_name", "class_name", "section", "sr_number"].filter((c) =>
-      colNames.includes(c)
-    );
+    const searchCols = ["child_name", "student_name", "class_name", "section", "sr_number"].filter((c) => colNames.includes(c));
 
-    const parts = (searchCols.length ? searchCols : ["child_name", "student_name", "class_name", "section", "sr_number"])
-      .map((c) => `${c}.ilike.%${escS}%`);
+    const parts = (searchCols.length ? searchCols : ["child_name", "student_name", "class_name", "section", "sr_number"]).map(
+      (c) => `${c}.ilike.%${escS}%`
+    );
 
     q.or(parts.join(","));
   }
@@ -353,7 +357,7 @@ function renderBody() {
       const col = inp.dataset.col;
       if (READONLY_COLS.includes(col)) return;
 
-      const key = inp.dataset.r;
+      const key = inp.dataset.r; // ✅ stable now
       const value = inp.value;
 
       const row = rows.find((x) => getRowKey(x) === key);
@@ -398,7 +402,12 @@ async function loadPage() {
     if (error) throw error;
 
     totalCount = count ?? 0;
-    rows = (data || []).map((r) => ({ ...r }));
+
+    // ✅ FIX: assign stable __key for DB rows
+    rows = (data || []).map((r) => ({
+      ...r,
+      __key: r?.id !== undefined && r?.id !== null && String(r.id) !== "" ? `id:${r.id}` : `tmp:${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    }));
 
     if (sch) columns = reorderColumnsBySchema(sch);
     else columns = inferColumnsFromRows(rows);
@@ -498,6 +507,11 @@ async function saveChanges() {
     inserts.push(out);
   }
 
+  if (!updates.length && !inserts.length) {
+    // ✅ avoids "Saved" when nothing is actually queued
+    return showMsg("No valid changes to save. (Tip: make sure new rows have required fields filled.)", true);
+  }
+
   await withBusy("Saving changes…", async () => {
     const total = updates.length + inserts.length;
     const chunk = 200;
@@ -537,10 +551,10 @@ async function saveChanges() {
 }
 
 // -------------------- Import popup (FIXED) --------------------
+// (unchanged from your file)
 function ensureImportModal() {
   let modal = document.getElementById("smImportModal");
 
-  // If an old/broken modal exists (missing required elements), remove and recreate it.
   if (modal) {
     const ok =
       modal.querySelector("#smImportFile") &&
@@ -787,29 +801,25 @@ async function importFromModal() {
 }
 
 // -------------------- Export --------------------
-
+// (unchanged from your file)
 function buildExportColNames(allRows) {
   const keys = new Set();
 
-  // keys present in DB rows
   for (const r of allRows || []) {
     for (const k of Object.keys(r || {})) keys.add(k);
   }
 
-  // also include current UI columns (in case DB returned empty set)
   for (const c of columns || []) keys.add(c.name);
 
   keys.delete("__key");
 
   const list = Array.from(keys);
 
-  // pinned first, then rest sorted
   const pinned = PINNED_COLS.filter((c) => list.includes(c));
   const rest = list.filter((c) => !pinned.includes(c)).sort((a, b) => a.localeCompare(b));
 
   return [...pinned, ...rest];
 }
-
 
 async function exportXlsx() {
   hideMsg();
@@ -852,7 +862,6 @@ async function exportXlsx() {
 
     setBusyProgress(80, "Building XLSX…");
 
-    // ✅ IMPORTANT FIX: derive columns from actual fetched rows (ensures new cols like referral_status are included)
     const colNames = buildExportColNames(all);
 
     const out = all.map((r) => {
@@ -873,8 +882,8 @@ async function exportXlsx() {
   }).catch((e) => showMsg(String(e?.message || e), true));
 }
 
-
 // -------------------- Add Column modal --------------------
+// (unchanged from your file)
 function ensureAddColumnModal() {
   let modal = document.getElementById("smAddColModal");
   if (modal) return modal;
@@ -970,7 +979,7 @@ function closeAddColumnModal() {
 }
 
 // -------------------- Upload click (SUPER FIX) --------------------
-// This works even if the Upload button is re-rendered later.
+// (unchanged from your file)
 let _uploadDelegatedInstalled = false;
 
 function isUploadTriggerElement(el) {
@@ -982,10 +991,8 @@ function isUploadTriggerElement(el) {
   const act = String(el.getAttribute?.("data-act") || "").trim().toLowerCase();
   if (act === "upload" || act === "import") return true;
 
-  // Extremely strict text matching to avoid random triggers:
   const txt = String(el.textContent || "").trim().toLowerCase();
   if (txt === "upload" || txt === "import") {
-    // only accept if it's button-like or has the known class
     const tag = String(el.tagName || "").toUpperCase();
     const isBtnLike = tag === "BUTTON" || tag === "A" || el.getAttribute?.("role") === "button";
     const cls = String(el.className || "").toLowerCase();
@@ -999,7 +1006,6 @@ function installUploadHandler() {
   if (_uploadDelegatedInstalled) return;
   _uploadDelegatedInstalled = true;
 
-  // 1) Direct bind (if the element exists right now)
   const direct = document.getElementById("smUpload");
   if (direct && direct.tagName === "BUTTON" && !direct.getAttribute("type")) {
     direct.setAttribute("type", "button");
@@ -1010,14 +1016,12 @@ function installUploadHandler() {
     openImportModal();
   });
 
-  // 2) Delegated handler (CAPTURE) for any future re-renders
   document.addEventListener(
     "click",
     (e) => {
       const target = e.target;
       if (!target) return;
 
-      // find nearest likely trigger
       const node =
         target.closest?.("#smUpload") ||
         target.closest?.("[data-act='upload']") ||
@@ -1033,7 +1037,7 @@ function installUploadHandler() {
       e.stopPropagation();
       openImportModal();
     },
-    true // CAPTURE so we win even if other handlers stop bubbling
+    true
   );
 }
 
@@ -1072,7 +1076,6 @@ function wireEvents() {
     deleteRow(key);
   });
 
-  // Header hover: show column delete button
   elThead?.addEventListener("mouseover", (e) => {
     const th = e.target.closest("th.sm-colhead");
     if (!th) return;
@@ -1116,7 +1119,6 @@ function wireEvents() {
     if (addBtn) openAddColumnModal();
   });
 
-  // ✅ upload works reliably now
   installUploadHandler();
 }
 
