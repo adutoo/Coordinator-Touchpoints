@@ -27,11 +27,14 @@ const deptMsg = document.getElementById("deptMsg");
 const subjMsg = document.getElementById("subjMsg");
 const catMsg = document.getElementById("catMsg");
 const pocMsg = document.getElementById("pocMsg");
-const porMsg = document.getElementById("porMsg");
+const classPorMsg = document.getElementById("classPorMsg");
 
 // ✅ Call settings msgs
 const callPromptMsg = document.getElementById("callPromptMsg");
 const coordMsg = document.getElementById("coordMsg");
+
+// ✅ Ticket email webhook msg
+const ticketEmailMsg = document.getElementById("ticketEmailMsg");
 
 // -------------------- Busy helpers (prevent nested popups) --------------------
 let __busyDepth = 0;
@@ -123,10 +126,8 @@ function setSelectOptions(selectEl, items, getValue, getLabel) {
 
     const catIrby = document.getElementById("catIrby");
     const catDept = document.getElementById("catDept");
-    const porDept = document.getElementById("porDept");
     if (catIrby) enhanceSelect(catIrby, { placeholder: catIrby.getAttribute("data-placeholder") || "Select...", search: true });
     if (catDept) enhanceSelect(catDept, { placeholder: catDept.getAttribute("data-placeholder") || "Select...", search: true });
-    if (porDept) enhanceSelect(porDept, { placeholder: porDept.getAttribute("data-placeholder") || "Select...", search: true });
 
     // Mount Sessions admin UI (safe)
     setBusyProgress(null, "Loading sessions…");
@@ -158,11 +159,12 @@ function setSelectOptions(selectEl, items, getValue, getLabel) {
     wireAddSubject();
     wireAddCategory();
     wireAddPocMap();
-    wireAddPorMap();
+    wireClassPorMap();
 
     // ✅ Call feature admin wires
     wireCallPrompt();
     wireCoordinatorDirectory();
+    wireTicketEmailWebhook();
 
     setBusyProgress(null, "Loading data…");
     await refreshAll(); // popup stays until done
@@ -1313,11 +1315,9 @@ async function refreshDepts() {
   ticketDepartments = data || [];
 
   const catDept = document.getElementById("catDept");
-  const porDept = document.getElementById("porDept");
   const activeDepts = ticketDepartments.filter((x) => x.is_active);
 
   setSelectOptions(catDept, activeDepts, (x) => x.label, (x) => x.label);
-  setSelectOptions(porDept, activeDepts, (x) => x.label, (x) => x.label);
 
   deptRows.innerHTML = (ticketDepartments || [])
     .map(
@@ -1602,73 +1602,160 @@ async function refreshPocMap() {
   });
 }
 
-// -------------------- Ticket Validation: POR Map --------------------
-function wireAddPorMap() {
-  const form = document.getElementById("addPorForm");
+// -------------------- ✅ Ticket Email Webhook (Apps Script URL) --------------------
+function wireTicketEmailWebhook() {
+  const saveBtn  = document.getElementById("ticketEmailSaveBtn");
+  const clearBtn = document.getElementById("ticketEmailClearBtn");
+  const urlInput = document.getElementById("ticketEmailWebhookUrl");
+  if (!saveBtn || !clearBtn || !urlInput) return;
+
+  saveBtn.addEventListener("click", async () => {
+    hide(ticketEmailMsg);
+    try {
+      await runBusy("Saving webhook URL…", async () => {
+        const url = (urlInput.value || "").trim();
+        if (!url) return show(ticketEmailMsg, "URL cannot be empty. Use Clear to disable.", true);
+        if (!url.startsWith("https://script.google.com")) {
+          return show(ticketEmailMsg, "URL must start with https://script.google.com", true);
+        }
+        await upsertAppSetting("ticket_email_webhook_url", url);
+        show(ticketEmailMsg, "Webhook URL saved ✅ Emails will now auto-send on ticket creation.");
+      });
+    } catch (e) {
+      show(ticketEmailMsg, String(e?.message || e), true);
+    }
+  });
+
+  clearBtn.addEventListener("click", async () => {
+    hide(ticketEmailMsg);
+    try {
+      await runBusy("Clearing webhook URL…", async () => {
+        await upsertAppSetting("ticket_email_webhook_url", "");
+        urlInput.value = "";
+        show(ticketEmailMsg, "Webhook URL cleared. Email notifications disabled.");
+      });
+    } catch (e) {
+      show(ticketEmailMsg, String(e?.message || e), true);
+    }
+  });
+}
+
+async function refreshTicketEmailWebhook() {
+  hide(ticketEmailMsg);
+  const urlInput = document.getElementById("ticketEmailWebhookUrl");
+  if (!urlInput) return;
+  try {
+    const v = await readAppSetting("ticket_email_webhook_url");
+    urlInput.value = (v || "").trim();
+  } catch (e) {
+    console.warn("Could not load ticket email webhook URL:", e);
+  }
+}
+
+// -------------------- Class POR Map (Class → POR Email) --------------------
+function wireClassPorMap() {
+  const form = document.getElementById("addClassPorForm");
   if (!form) return;
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    hide(porMsg);
+    hide(classPorMsg);
 
-    await runBusy("Saving…", async () => {
-      const department = document.getElementById("porDept")?.value || "";
-      const por_email = document.getElementById("porEmail")?.value?.trim() || "";
+    await runBusy("Saving class POR mapping…", async () => {
+      const por_email = (document.getElementById("classPorEmail")?.value || "").trim();
+      const por_name  = (document.getElementById("classPorName")?.value  || "").trim();
 
-      if (!department) return show(porMsg, "Select department.", true);
-      if (!por_email) return show(porMsg, "POR email is required.", true);
+      // Collect all checked classes
+      const checkboxes = document.querySelectorAll(".classPorCheck:checked");
+      const selectedClasses = Array.from(checkboxes).map(c => c.value).filter(Boolean);
 
-      const { error } = await sb.from("ticket_por_map").upsert({ department, por_email }, { onConflict: "department" });
+      if (!por_email || !por_email.includes("@")) return show(classPorMsg, "Valid POR Email is required.", true);
+      if (!selectedClasses.length) return show(classPorMsg, "Select at least one class.", true);
 
-      if (error) return show(porMsg, error.message, true);
+      // Upsert each class mapping
+      const rows = selectedClasses.map(class_name => ({ class_name, por_email, por_name: por_name || null }));
+      const { error } = await sb.from("class_por_map").upsert(rows, { onConflict: "class_name" });
 
-      show(porMsg, "Saved ✅");
-      document.getElementById("porEmail").value = "";
-      await refreshPorMap();
+      if (error) return show(classPorMsg, error.message, true);
+
+      show(classPorMsg, `Saved ${selectedClasses.length} class(es) ✅`);
+      document.getElementById("classPorEmail").value = "";
+      document.getElementById("classPorName").value = "";
+
+      // Uncheck all
+      document.querySelectorAll(".classPorCheck").forEach(c => { c.checked = false; });
+
+      await refreshClassPorMap();
     });
   });
 }
 
-async function refreshPorMap() {
-  hide(porMsg);
-  const porRows = document.getElementById("porRows");
-  if (!porRows) return;
+async function refreshClassPorMap() {
+  hide(classPorMsg);
+  const tbody = document.getElementById("classPorRows");
+  const classList = document.getElementById("classPorClassList");
+  if (!tbody) return;
 
-  porRows.innerHTML = `<tr><td colspan="3">Loading…</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="3">Loading…</td></tr>`;
 
-  const { data, error } = await sb.from("ticket_por_map").select("department,por_email").order("department");
+  // Load distinct classes from students table
+  if (classList) {
+    const { data: stuData } = await sb
+      .from("students")
+      .select("class_name")
+      .order("class_name");
+
+    const classes = [...new Set((stuData || []).map(s => s.class_name).filter(Boolean))].sort();
+
+    classList.innerHTML = classes.map(c => `
+      <label style="display:inline-flex;align-items:center;gap:6px;margin:4px 8px 4px 0;cursor:pointer;">
+        <input type="checkbox" class="classPorCheck" value="${escapeHtml(c)}" />
+        <span>${escapeHtml(c)}</span>
+      </label>
+    `).join("");
+
+    if (!classes.length) {
+      classList.innerHTML = `<span style="opacity:.6;">No classes found in students table.</span>`;
+    }
+  }
+
+  // Load current mappings
+  const { data, error } = await sb
+    .from("class_por_map")
+    .select("id,class_name,por_email,por_name")
+    .order("class_name");
+
   if (error) {
-    porRows.innerHTML = `<tr><td colspan="3">${escapeHtml(error.message)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="3">${escapeHtml(error.message)}</td></tr>`;
     return;
   }
 
-  porRows.innerHTML = (data || [])
-    .map(
-      (r) => `
+  if (!data?.length) {
+    tbody.innerHTML = `<tr><td colspan="3">No mappings yet.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = (data || []).map(r => `
     <tr>
-      <td>${escapeHtml(r.department)}</td>
-      <td>${escapeHtml(r.por_email)}</td>
+      <td>${escapeHtml(r.class_name)}</td>
+      <td>${escapeHtml(r.por_email)}${r.por_name ? ` <span style="opacity:.6;font-size:12px;">(${escapeHtml(r.por_name)})</span>` : ""}</td>
       <td>
-        <button class="btn danger" data-act="delPor" data-dept="${escapeHtml(r.department)}">Delete</button>
+        <button class="btn danger" data-act="delClassPor" data-id="${r.id}" data-class="${escapeHtml(r.class_name)}">Delete</button>
       </td>
     </tr>
-  `
-    )
-    .join("");
+  `).join("");
 
-  porRows.querySelectorAll("button[data-act='delPor']").forEach((btn) => {
+  tbody.querySelectorAll("button[data-act='delClassPor']").forEach(btn => {
     btn.addEventListener("click", async () => {
-      const dept = btn.getAttribute("data-dept");
-      if (!dept) return;
-      const ok = confirm(`Delete POR mapping for ${dept}?`);
-      if (!ok) return;
+      const id = btn.getAttribute("data-id");
+      const cls = btn.getAttribute("data-class");
+      if (!confirm(`Remove POR mapping for class "${cls}"?`)) return;
 
       await runBusy("Deleting…", async () => {
-        const { error } = await sb.from("ticket_por_map").delete().eq("department", dept);
-        if (error) return show(porMsg, error.message, true);
-
-        show(porMsg, "Deleted ✅");
-        await refreshPorMap();
+        const { error } = await sb.from("class_por_map").delete().eq("id", id);
+        if (error) return show(classPorMsg, error.message, true);
+        show(classPorMsg, "Deleted ✅");
+        await refreshClassPorMap();
       });
     });
   });
@@ -1703,12 +1790,13 @@ async function refreshAll() {
   await refreshSubjects();
   await refreshCategories();
   await refreshPocMap();
-  await refreshPorMap();
+  await refreshClassPorMap();
 
   // ✅ Call feature settings
   setBusyProgress(90, "Loading call settings…");
   await refreshCallPrompt();
   await refreshCoordinatorDirectory();
+  await refreshTicketEmailWebhook();
 
   setBusyProgress(100, "Done");
 }

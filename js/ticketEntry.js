@@ -5,6 +5,10 @@ import { getMe, getMyProfile } from "./auth.js";
 import { enhanceSelect, refreshSelect } from "./customSelect.js";
 import { withBusy, setBusyProgress } from "./busy.js";
 
+// ✅ Ticket Email Notification webhook (Apps Script)
+const TICKET_EMAIL_WEBHOOK_KEY = "ticket_email_webhook_url";
+let ticketEmailWebhookUrl = "";
+
 const tStudent = document.getElementById("tStudent");
 const tIssue = document.getElementById("tIssue");
 const tDept = document.getElementById("tDept");
@@ -185,6 +189,12 @@ async function loadCategories() {
       // DB task (if issue+dept selected)
       await loadCategories();
 
+      // ✅ Load ticket email webhook URL (non-critical, silent fail)
+      try {
+        const wR = await sb.from("app_settings").select("value").eq("key", TICKET_EMAIL_WEBHOOK_KEY).maybeSingle();
+        ticketEmailWebhookUrl = (wR.data?.value || "").trim();
+      } catch { ticketEmailWebhookUrl = ""; }
+
       hideMsg();
     });
   } catch (e) {
@@ -262,15 +272,19 @@ form.addEventListener("submit", async (e) => {
 
     if (!pocR.error && pocR.data?.poc_email) poc = pocR.data.poc_email;
 
-    const porR = await sb
-      .from("ticket_por_map")
-      .select("por_email")
-      .eq("department", dept)
-      .maybeSingle();
+    // ✅ Class-based POR lookup (via class_por_map)
+    const className = s?.class_name ?? "";
+    if (className) {
+      const porR = await sb
+        .from("class_por_map")
+        .select("por_email")
+        .eq("class_name", className)
+        .maybeSingle();
 
-    if (!porR.error && porR.data?.por_email) por = porR.data.por_email;
+      if (!porR.error && porR.data?.por_email) por = porR.data.por_email;
+    }
 
-    // ✅ NEW: If POR not set for this department, use POC
+    // Fallback: if no class POR found → use POC
     if (!por) por = poc;
 
     const ticket_number = genTicketNumber();
@@ -314,6 +328,14 @@ form.addEventListener("submit", async (e) => {
 
     show(`Ticket created ✅ ${ticket_number}`);
 
+    // ✅ Fire email notification to POR (non-blocking, fire-and-forget)
+    if (ticketEmailWebhookUrl && por) {
+      sendTicketEmailNotification(ticketEmailWebhookUrl, {
+        ...payload,
+        raised_at: now.toISOString()
+      }).catch(err => console.warn("[Email notify] failed:", err));
+    }
+
     // Reset UI (no DB)
     form.reset();
     applyConditionals();
@@ -329,3 +351,22 @@ form.addEventListener("submit", async (e) => {
     show(err?.message || String(err), true);
   });
 });
+
+// ============================================================
+// ✅ Send ticket details to Apps Script webhook (fire-and-forget)
+// Uses no-cors so Apps Script CORS restrictions don't block it.
+// ============================================================
+async function sendTicketEmailNotification(webhookUrl, data) {
+  if (!webhookUrl) return;
+  try {
+    await fetch(webhookUrl, {
+      method:  "POST",
+      mode:    "no-cors",                    // avoids CORS preflight issues with Apps Script
+      headers: { "Content-Type": "text/plain" }, // text/plain avoids OPTIONS preflight
+      body:    JSON.stringify(data),
+    });
+    console.log("[Email notify] Request sent for ticket:", data.ticket_number);
+  } catch (err) {
+    console.warn("[Email notify] Fetch failed:", err);
+  }
+}

@@ -1,248 +1,568 @@
-:root{
-  --bg1:#05060a;
-  --bg2:#0b1020;
-  --glass: rgba(255,255,255,0.08);
-  --glass2: rgba(255,255,255,0.12);
-  --border: rgba(255,255,255,0.14);
-  --text: rgba(255,255,255,0.92);
-  --muted: rgba(255,255,255,0.62);
-  --accent: #7c5cff;
-  --accent2:#00d4ff;
-  --danger:#ff4d6d;
-  --shadow: 0 20px 60px rgba(0,0,0,0.55);
+/* =========================================================
+   Coordinator Touchpoints — Design System v2
+   ========================================================= */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* ── Design Tokens ──────────────────────────────────────── */
+:root {
+  /* Background */
+  --bg1: #060810;
+  --bg2: #0d1223;
+
+  /* Glass surfaces */
+  --glass:  rgba(255,255,255,0.055);
+  --glass2: rgba(255,255,255,0.09);
+  --glass3: rgba(255,255,255,0.04);
+
+  /* Borders */
+  --border:       rgba(255,255,255,0.10);
+  --border-hover: rgba(255,255,255,0.18);
+  --border-focus: rgba(108,99,255,0.70);
+
+  /* Text */
+  --text:  rgba(255,255,255,0.93);
+  --muted: rgba(255,255,255,0.50);
+  --dim:   rgba(255,255,255,0.28);
+
+  /* Accent (primary) */
+  --accent:       #6c63ff;
+  --accent-soft:  rgba(108,99,255,0.18);
+  --accent-glow:  rgba(108,99,255,0.30);
+  --accent2:      #22d3ee;
+
+  /* Semantic */
+  --danger:       #f43f5e;
+  --danger-soft:  rgba(244,63,94,0.18);
+  --success:      #10b981;
+  --success-soft: rgba(16,185,129,0.15);
+  --warn:         #f59e0b;
+
+  /* Elevation shadows */
+  --shadow-sm: 0 2px 8px rgba(0,0,0,0.30);
+  --shadow:    0 8px 32px rgba(0,0,0,0.45);
+  --shadow-lg: 0 20px 60px rgba(0,0,0,0.55);
+
+  /* Radii */
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 18px;
+  --r-xl: 22px;
+
+  /* Motion */
+  --ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --dur: 180ms;
 }
 
-*{ box-sizing:border-box; }
-html,body{ height:100%; }
-body{
-  margin:0;
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+/* ── Reset & Base ───────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { height: 100%; }
+
+body {
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
   color: var(--text);
   background:
-    radial-gradient(1200px 800px at 20% 10%, rgba(124,92,255,0.20), transparent 60%),
-    radial-gradient(1200px 800px at 80% 30%, rgba(0,212,255,0.14), transparent 60%),
-    linear-gradient(180deg, var(--bg1), var(--bg2));
+    radial-gradient(ellipse 1100px 700px at 15%  8%,  rgba(108,99,255,0.18) 0%, transparent 60%),
+    radial-gradient(ellipse 900px 600px  at 85%  25%, rgba(34,211,238,0.11) 0%, transparent 60%),
+    radial-gradient(ellipse 800px 500px  at 50%  90%, rgba(108,99,255,0.08) 0%, transparent 60%),
+    linear-gradient(175deg, var(--bg1) 0%, var(--bg2) 100%);
+  background-attachment: scroll;
+  -webkit-font-smoothing: antialiased;
 }
 
-a{ color:inherit; text-decoration:none; }
+a { color: inherit; text-decoration: none; }
 
-.container{
+/* ── Layout ─────────────────────────────────────────────── */
+.container {
   width: 100%;
-  max-width: none;     /* IMPORTANT: removes the 1100px cap */
+  max-width: none;
   margin: 0 auto;
-  padding: 20px 28px;  /* nice spacing on big screens */
+  padding: 20px 24px;
 }
 
-@media (max-width: 600px){
-  .container{ padding: 14px; }
+@media (max-width: 600px) {
+  .container { padding: 12px; }
 }
 
+/* ── Navigation / Topbar ────────────────────────────────── */
+#navHolder {
+  position: sticky;
+  top: 12px;
+  z-index: 9999;
+}
 
-.topbar{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  padding: 14px 16px;
+  padding: 10px 16px;
+  background: rgba(10,12,22,0.75);
   border: 1px solid var(--border);
-  background: var(--glass);
-  backdrop-filter: blur(14px);
-  border-radius: 18px;
-  box-shadow: var(--shadow);
+  border-radius: var(--r-xl);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,0.06);
 }
 
-.brand{
-  display:flex; gap:10px; align-items:center;
+/* Brand */
+.brand {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-shrink: 0;
 }
-.logo{
-  width:38px; height:38px; border-radius: 14px;
-  background:
-    radial-gradient(circle at 30% 30%, rgba(255,255,255,0.35), transparent 60%),
-    linear-gradient(135deg, rgba(124,92,255,0.95), rgba(0,212,255,0.75));
-  box-shadow: 0 18px 40px rgba(124,92,255,0.25);
-  transform: translateZ(0);
-}
-.brand h1{ font-size: 16px; margin:0; letter-spacing:0.2px; }
-.brand p{ margin:0; font-size:12px; color: var(--muted); }
 
-.nav{
-  display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+.logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+  box-shadow: 0 0 18px rgba(108,99,255,0.40);
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
 }
-.nav a{
-  padding: 10px 12px;
-  border: 1px solid transparent;
-  border-radius: 14px;
+.logo::after {
+  content: '';
+  position: absolute;
+  top: 6px; left: 6px;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.30);
+}
+
+.brand h1 {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  color: var(--text);
+}
+.brand p {
+  font-size: 11px;
   color: var(--muted);
-  transition: 160ms ease;
+  letter-spacing: 0.1px;
 }
-.nav a:hover{
+
+/* Nav links */
+.nav {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.nav a {
+  padding: 7px 11px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  transition: background var(--dur) var(--ease),
+              color var(--dur) var(--ease),
+              border-color var(--dur) var(--ease),
+              transform var(--dur) var(--ease);
+}
+.nav a:hover {
+  background: var(--glass2);
   border-color: var(--border);
-  background: rgba(255,255,255,0.06);
   color: var(--text);
   transform: translateY(-1px);
 }
-.nav a.active{
-  border-color: rgba(124,92,255,0.55);
-  background: rgba(124,92,255,0.14);
-  color: var(--text);
+.nav a.active {
+  background: var(--accent-soft);
+  border-color: rgba(108,99,255,0.45);
+  color: #a5a0ff;
 }
 
-.btn{
-  padding: 10px 12px;
-  border-radius: 14px;
-  border: 1px solid var(--border);
-  background: rgba(255,255,255,0.06);
-  color: var(--text);
-  cursor:pointer;
-  transition: 160ms ease;
-}
-.btn:hover{ transform: translateY(-1px); background: rgba(255,255,255,0.10); }
-.btn.primary{
-  border-color: rgba(124,92,255,0.65);
-  background: rgba(124,92,255,0.22);
-}
-.btn.danger{
-  border-color: rgba(255,77,109,0.55);
-  background: rgba(255,77,109,0.16);
-}
-
-.grid{
-  display:grid;
-  grid-template-columns: repeat(12, 1fr);
-  gap: 14px;
-  margin-top: 16px;
-}
-
-.card{
-  grid-column: span 12;
+/* ── Buttons ────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 14px;
+  border-radius: var(--r-md);
   border: 1px solid var(--border);
   background: var(--glass);
-  backdrop-filter: blur(14px);
-  border-radius: 20px;
-  box-shadow: var(--shadow);
-  padding: 16px;
-  transform: perspective(900px) translateZ(0);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease),
+              border-color var(--dur) var(--ease),
+              transform var(--dur) var(--ease),
+              box-shadow var(--dur) var(--ease);
+  white-space: nowrap;
 }
-.card:hover{
-  border-color: rgba(255,255,255,0.20);
+.btn:hover {
+  background: var(--glass2);
+  border-color: var(--border-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+.btn:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+.btn:disabled {
+  opacity: 0.40;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
-.card h2{ margin:0 0 8px 0; font-size: 16px; }
-.muted{ color: var(--muted); font-size: 12px; }
-
-.kpi{
-  display:flex; gap:12px; flex-wrap:wrap;
+.btn.primary {
+  background: linear-gradient(135deg, rgba(108,99,255,0.30) 0%, rgba(108,99,255,0.20) 100%);
+  border-color: rgba(108,99,255,0.55);
+  color: #c4c1ff;
 }
-.kpi .pill{
-  min-width: 170px;
-  padding: 12px 14px;
-  border-radius: 18px;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid var(--border);
+.btn.primary:hover {
+  background: linear-gradient(135deg, rgba(108,99,255,0.42) 0%, rgba(108,99,255,0.30) 100%);
+  border-color: rgba(108,99,255,0.75);
+  box-shadow: 0 0 20px rgba(108,99,255,0.22);
 }
-.kpi .pill b{ font-size: 18px; display:block; margin-bottom:6px; }
-.kpi .pill span{ font-size: 12px; color: var(--muted); }
 
-.form{
-  display:grid;
+.btn.danger {
+  background: var(--danger-soft);
+  border-color: rgba(244,63,94,0.45);
+  color: #fda4af;
+}
+.btn.danger:hover {
+  background: rgba(244,63,94,0.28);
+  border-color: rgba(244,63,94,0.70);
+  box-shadow: 0 0 16px rgba(244,63,94,0.18);
+}
+
+/* ── Grid ───────────────────────────────────────────────── */
+.grid {
+  display: grid;
   grid-template-columns: repeat(12, 1fr);
+  gap: 16px;
+  margin-top: 18px;
+}
+
+/* ── Cards ──────────────────────────────────────────────── */
+.card {
+  grid-column: span 12;
+  position: relative;
+  z-index: 1;
+  background: rgba(255,255,255,0.044);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  padding: 20px 22px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+  will-change: transform;
+  transform: translateZ(0);
+}
+.card:hover {
+  border-color: rgba(255,255,255,0.16);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Card header typography */
+.card h2 {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  color: var(--text);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.card h2::before {
+  content: '';
+  display: inline-block;
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--accent), var(--accent2));
+  flex-shrink: 0;
+}
+
+.card > .muted { font-size: 12px; margin-bottom: 14px; }
+
+.muted {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Responsive spans */
+@media (min-width: 820px) {
+  .card.span6  { grid-column: span 6; }
+  .card.span4  { grid-column: span 4; }
+  .card.span3  { grid-column: span 3; }
+}
+
+/* Dropdown elevation */
+.card.dropdown-elevated { z-index: 100000; }
+
+/* ── Forms ──────────────────────────────────────────────── */
+.form {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 12px;
   margin-top: 12px;
 }
-.field{ grid-column: span 12; display:flex; flex-direction:column; gap: 6px; }
-.field label{ font-size:12px; color: var(--muted); }
-.field input, .field select, .field textarea{
-  width:100%;
-  border-radius: 14px;
-  border: 1px solid var(--border);
-  background: rgba(0,0,0,0.18);
-  color: var(--text);
-  padding: 11px 12px;
-  outline:none;
-}
-.field textarea{ min-height: 96px; resize: vertical; }
-.field input[readonly]{
-  opacity: 0.85;
-  background: rgba(255,255,255,0.05);
+
+.field {
+  grid-column: span 12;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
 }
 
-.row{
-  display:flex; gap:10px; flex-wrap:wrap; align-items:center;
+@media (min-width: 820px) {
+  .field.span6  { grid-column: span 6; }
+  .field.span4  { grid-column: span 4; }
+  .field.span3  { grid-column: span 3; }
+  .field.span8  { grid-column: span 8; }
+  .field.span9  { grid-column: span 9; }
+  .field.span12 { grid-column: span 12; }
 }
 
-.tablewrap{ overflow:auto; border-radius: 16px; border: 1px solid var(--border); }
-table{
-  width:100%;
-  border-collapse: collapse;
-  min-width: 980px;
-}
-th, td{
-  padding: 10px 10px;
-  border-bottom: 1px solid rgba(255,255,255,0.10);
-  text-align:left;
-  font-size: 12px;
-  vertical-align: top;
-}
-th{
-  position: sticky;
-  top: 0;
-  background: rgba(10,12,18,0.85);
-  backdrop-filter: blur(10px);
-  font-size: 12px;
-  color: rgba(255,255,255,0.85);
-}
-
-.notice{
-  margin-top: 10px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  border: 1px solid var(--border);
-  background: rgba(255,255,255,0.06);
+.field label {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
   color: var(--muted);
 }
 
-@media (min-width: 820px){
-  .card.span6{ grid-column: span 6; }
-  .field.span6{ grid-column: span 6; }
-  .field.span4{ grid-column: span 4; }
-  .field.span3{ grid-column: span 3; }
+/* Required asterisk */
+.field label.required::after {
+  content: ' *';
+  color: var(--danger);
+  font-size: 11px;
 }
 
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.20);
+  color: var(--text);
+  padding: 10px 13px;
+  font-family: inherit;
+  font-size: 13.5px;
+  outline: none;
+  transition: border-color var(--dur) var(--ease),
+              box-shadow var(--dur) var(--ease),
+              background var(--dur) var(--ease);
+}
 
-/* =========================
-   Dark Scrollbars (Global)
-   ========================= */
+.field input:focus,
+.field textarea:focus {
+  border-color: var(--border-focus);
+  background: rgba(108,99,255,0.06);
+  box-shadow: 0 0 0 3px rgba(108,99,255,0.15);
+}
 
-/* Firefox */
+.field input::placeholder,
+.field textarea::placeholder {
+  color: var(--dim);
+}
+
+.field textarea {
+  min-height: 92px;
+  resize: vertical;
+  line-height: 1.6;
+}
+
+.field input[readonly] {
+  opacity: 0.70;
+  background: rgba(255,255,255,0.03);
+  cursor: not-allowed;
+}
+
+/* ── Row util ───────────────────────────────────────────── */
+.row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* ── Notice / Toast messages ────────────────────────────── */
+.notice {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--glass3);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  animation: fadeSlide var(--dur) var(--ease);
+}
+@keyframes fadeSlide {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Tables ─────────────────────────────────────────────── */
+.tablewrap {
+  overflow: auto;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.12);
+}
+.tablewrap.maxh {
+  max-height: 340px;
+  overflow: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 600px;
+}
+
+th, td {
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  text-align: left;
+  font-size: 12.5px;
+  vertical-align: middle;
+}
+
+th {
+  position: sticky;
+  top: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: rgba(8,10,20,0.90);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+  z-index: 2;
+}
+
+tbody tr {
+  transition: background var(--dur) var(--ease);
+}
+tbody tr:hover {
+  background: rgba(255,255,255,0.035);
+}
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ── KPI Pills ──────────────────────────────────────────── */
+.kpi {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.kpi .pill {
+  min-width: 160px;
+  padding: 14px 16px;
+  border-radius: var(--r-lg);
+  background: var(--glass3);
+  border: 1px solid var(--border);
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.kpi .pill:hover {
+  background: var(--glass);
+  border-color: var(--border-hover);
+}
+.kpi .pill b {
+  font-size: 17px;
+  font-weight: 700;
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text);
+}
+.kpi .pill span {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+/* ── Scrollbars ─────────────────────────────────────────── */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,0.22) rgba(0,0,0,0.35);
+  scrollbar-color: rgba(255,255,255,0.18) transparent;
 }
-
-/* Chromium / Edge / Safari */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-::-webkit-scrollbar-track {
-  background: rgba(0,0,0,0.35);
-  border-radius: 999px;
-}
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.18);
-  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.16);
   border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255,255,255,0.28);
 }
 
+/* ── File Picker ────────────────────────────────────────── */
+.file-picker {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.file-input-hidden {
+  position: absolute;
+  left: -99999px;
+  width: 1px; height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.file-name-chip {
+  padding: 9px 13px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--glass3);
+  color: var(--muted);
+  font-size: 13px;
+  max-width: 400px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-/* =========================
-   Custom Dropdown (Dark Glass)
-   Uses your sample structure,
-   but keeps our theme
-   ========================= */
+/* ── TP Entry ───────────────────────────────────────────── */
+.tp-entries { display: flex; flex-direction: column; gap: 14px; width: 100%; }
+.tp-entry   { width: 100%; }
+.tp-entry-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.tp-entry-title { font-weight: 700; color: var(--text); }
+
+/* ── Reports action cell ────────────────────────────────── */
+.reports-actions { white-space: nowrap; }
+
+/* ── Misc utils ─────────────────────────────────────────── */
+.sm-readonly {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+.sm-readonly:focus {
+  box-shadow: none !important;
+  border-color: var(--border) !important;
+}
+
+/* =========================================================
+   Custom Dropdown (preserving exact class structure)
+   Only colors / micro-refinements changed
+   ========================================================= */
 
 .native-select-hidden {
   position: absolute !important;
@@ -254,536 +574,332 @@ th{
 
 .custom-select-container {
   position: relative;
-  width: 100%;
+  width: 100% !important;
   user-select: none;
 }
 
-.select-trigger {
+.custom-select-container .select-trigger {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: rgba(0,0,0,0.18);
-  padding: 11px 12px;
-  font-size: 14px;
+  width: 100% !important;
+  background: rgba(0,0,0,0.20);
+  padding: 10px 13px;
+  font-size: 13.5px;
+  font-family: inherit;
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--r-md);
   cursor: pointer;
-  transition: 160ms ease;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+  transition: background var(--dur) var(--ease),
+              border-color var(--dur) var(--ease),
+              box-shadow var(--dur) var(--ease),
+              transform var(--dur) var(--ease);
 }
 
-.select-trigger:hover {
-  background: rgba(255,255,255,0.06);
+.custom-select-container .select-trigger:hover {
+  background: rgba(255,255,255,0.05);
+  border-color: var(--border-hover);
   transform: translateY(-1px);
 }
 
-.select-trigger .trigger-text {
+.custom-select-container .select-trigger .trigger-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   padding-right: 10px;
-  color: rgba(255,255,255,0.90);
+  color: var(--text);
 }
-
-.select-trigger .trigger-text.placeholder {
-  color: rgba(255,255,255,0.55);
+.custom-select-container .select-trigger .trigger-text.placeholder {
+  color: var(--dim);
 }
 
 .arrow {
-  width: 18px;
-  height: 18px;
-  transition: transform 0.25s ease;
-  color: rgba(255,255,255,0.65);
+  width: 16px;
+  height: 16px;
+  transition: transform 0.22s var(--ease), color 0.22s var(--ease);
+  color: var(--muted);
   flex: 0 0 auto;
 }
 
-/* Dropdown Menu (Hidden by default) */
-.options-menu {
+/* Dropdown menu */
+.custom-select-container .options-menu {
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
   right: 0;
-  background: rgba(14,16,24,0.86);
+  background: rgba(12,14,24,0.96);
   border: 1px solid var(--border);
-  border-radius: 16px;
-  box-shadow: var(--shadow);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg), 0 0 0 1px rgba(255,255,255,0.04);
   opacity: 0;
   visibility: hidden;
-  transform: translateY(-8px);
-  transition: 160ms ease;
-  z-index: 200;
+  transform: translateY(-6px) scale(0.99);
+  transition: opacity 0.18s var(--ease),
+              visibility 0.18s var(--ease),
+              transform 0.18s var(--ease);
+  z-index: 100001;
   overflow: hidden;
+  backdrop-filter: blur(20px);
 }
 
-/* Scroll inside menu */
-.options-menu .options-scroll {
+.custom-select-container .options-menu .options-scroll {
   max-height: 280px;
   overflow: auto;
+  background: rgba(12,14,24,0.96);
 }
 
-/* each option */
-.option {
-  padding: 10px 12px;
+/* Option items */
+.custom-select-container .option {
+  display: block;
+  padding: 10px 13px;
   cursor: pointer;
-  color: rgba(255,255,255,0.88);
-  transition: background 0.12s ease;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.85);
+  font-size: 13.5px;
+  font-family: inherit;
+  background: transparent;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  transition: background 0.12s ease, color 0.12s ease, padding-left 0.12s ease;
 }
-.option:last-child {
-  border-bottom: none;
+.custom-select-container .option:last-child { border-bottom: none; }
+
+.custom-select-container .options-scroll .option:first-child {
+  border-top-left-radius: var(--r-md);
+  border-top-right-radius: var(--r-md);
+}
+.custom-select-container .options-scroll .option:last-child {
+  border-bottom-left-radius: var(--r-md);
+  border-bottom-right-radius: var(--r-md);
 }
 
-.option:hover {
-  background: rgba(124,92,255,0.20);
-  color: white;
+.custom-select-container .option:hover {
+  background: rgba(108,99,255,0.18);
+  color: #fff;
+  padding-left: 17px;
 }
-
-/* selected option */
-.option.selected {
-  background: rgba(124,92,255,0.30);
-  color: white;
+.custom-select-container .option.selected {
+  background: rgba(108,99,255,0.28);
+  color: #d4d1ff;
   font-weight: 600;
 }
 
-/* OPEN STATE */
+/* Open state */
+.custom-select-container.open { z-index: 99999; }
 .custom-select-container.open .options-menu {
   opacity: 1;
   visibility: visible;
-  transform: translateY(0);
+  transform: translateY(0) scale(1);
 }
-
 .custom-select-container.open .select-trigger {
-  border-color: rgba(124,92,255,0.65);
-  box-shadow: 0 0 0 3px rgba(124,92,255,0.18);
+  border-color: rgba(108,99,255,0.70);
+  box-shadow: 0 0 0 3px rgba(108,99,255,0.15);
+  background: rgba(108,99,255,0.06);
 }
-
 .custom-select-container.open .arrow {
   transform: rotate(180deg);
-  color: rgba(124,92,255,0.95);
+  color: #a5a0ff;
 }
 
-
-/* ===== Custom Dropdown: Search UI ===== */
-.select-search-wrap{
+/* ── Search inside dropdown ─────────────────────────────── */
+.select-search-wrap {
   padding: 10px;
-  border-bottom: 1px solid rgba(255,255,255,0.10);
-  background: rgba(14,16,24,0.92);
-}
-
-.select-search{
-  width: 100%;
-  border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(0,0,0,0.22);
-  color: rgba(255,255,255,0.92);
-  padding: 10px 11px;
-  outline: none;
-}
-
-.select-search::placeholder{
-  color: rgba(255,255,255,0.55);
-}
-
-.select-search:focus{
-  border-color: rgba(124,92,255,0.65);
-  box-shadow: 0 0 0 3px rgba(124,92,255,0.16);
-}
-
-
-/* ===== Admin: Custom File Picker ===== */
-.file-picker{
-  display:flex;
-  gap:10px;
-  align-items:center;
-  flex-wrap:wrap;
-}
-
-.file-input-hidden{
-  position:absolute;
-  left:-99999px;
-  width:1px;
-  height:1px;
-  opacity:0;
-  pointer-events:none;
-}
-
-.file-name-chip{
-  padding: 10px 12px;
-  border-radius: 14px;
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(255,255,255,0.06);
-  color: rgba(255,255,255,0.70);
-  max-width: 420px;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
-
-
-/* ===== Fixed-height scroll areas ===== */
-.tablewrap.maxh{
-  max-height: 340px;
-  overflow: auto;
-}
-
-#navHolder{
-  position: sticky;
-  top: 12px;
-  z-index: 9999;
-}
-
-
-/* =========================
-   FIX: Custom Dropdown glitch (Admin)
-   - Scope styles so other .option styles don't interfere
-   - Make dropdown overlay correctly (z-index)
-   ========================= */
-
-.custom-select-container { position: relative; }
-.custom-select-container.open { z-index: 99999; } /* ensures menu is above everything */
-
-.custom-select-container .options-menu{
-  background: rgba(14,16,24,0.92); /* stronger background so it doesn't look detached */
-  border: 1px solid rgba(255,255,255,0.14);
-}
-
-.custom-select-container .options-scroll{
-  background: rgba(14,16,24,0.92);
-}
-
-/* Scope option styling so other global `.option` doesn't break it */
-.custom-select-container .option{
-  display: block;
-  margin: 0;
-  background: transparent;
-  color: rgba(255,255,255,0.88);
-  padding: 10px 12px;
-  cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
   border-bottom: 1px solid rgba(255,255,255,0.08);
+  background: rgba(12,14,24,0.98);
+}
+.select-search {
+  width: 100%;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.28);
+  color: var(--text);
+  padding: 9px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.select-search::placeholder { color: var(--dim); }
+.select-search:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(108,99,255,0.15);
 }
 
-.custom-select-container .option:last-child{
-  border-bottom: none;
-}
+/* =========================================================
+   ComboSelect (searchable text input with suggestions)
+   ========================================================= */
+.cs-comboWrap, .cs-combo { position: relative; width: 100%; overflow: visible; }
 
-/* Rounded corners for first/last items inside the scroll list */
-.custom-select-container .options-scroll .option:first-child{
-  border-top-left-radius: 14px;
-  border-top-right-radius: 14px;
-}
-.custom-select-container .options-scroll .option:last-child{
-  border-bottom-left-radius: 14px;
-  border-bottom-right-radius: 14px;
-}
-
-.custom-select-container .option:hover{
-  background: rgba(124,92,255,0.20);
-  color: #fff;
-}
-
-.custom-select-container .option.selected{
-  background: rgba(124,92,255,0.30);
-  color: #fff;
-  font-weight: 600;
-}
-
-/* Ensure cards can be raised above other cards */
-.card { position: relative; z-index: 1; }
-
-/* When any dropdown is open inside a card, raise that card above others */
-.card.dropdown-elevated { z-index: 100000; }
-
-/* Extra safety: make menu itself high */
-.custom-select-container .options-menu { z-index: 100001; }
-
-/* ===== Fix Entry bulk layout (prevents tiny left-column shrink) ===== */
-.tp-entries { display: flex; flex-direction: column; gap: 14px; width: 100%; }
-.tp-entry { width: 100%; }
-
-.tp-entry-head{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:10px;
-  margin-bottom:10px;
-}
-.tp-entry-title{ font-weight:700; color: rgba(255,255,255,0.86); }
-
-/* Ensure your 12-col grid stays flexible */
-.form{
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-}
-.field{ min-width: 0; }
-
-/* Custom dropdown should take full width */
-.custom-select-container{ width:100% !important; }
-.custom-select-container .select-trigger{ width:100% !important; }
-
-/* Reports action cell keeps button inside */
-.reports-actions{ white-space: nowrap; }
-
-
-/* Performance boost for glass UI */
-.card, .nav, .topbar, .custom-select-container .options-menu {
-  will-change: transform;
-  transform: translateZ(0);
-}
-
-/* Reduce blur cost (still looks glassy) */
-.card {
-  backdrop-filter: blur(10px);
-}
-
-/* Avoid repaint storms on scroll */
-body {
-  background-attachment: scroll; /* (don’t use fixed background) */
-}
-
-
-/* ComboSelect (ticket number searchable input) */
-.cs-comboWrap { position: relative; width: 100%; }
-
-.cs-comboInput{
+.cs-comboInput, .cs-combo-input {
   width: 100%;
   height: 40px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(0,0,0,0.22);
-  color: rgba(255,255,255,0.92);
+  padding: 10px 13px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.20);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13.5px;
   outline: none;
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.cs-comboInput:focus, .cs-combo-input:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(108,99,255,0.15);
 }
 
-.cs-comboInput:focus{
-  border-color: rgba(124,92,255,0.65);
-  box-shadow: 0 0 0 3px rgba(124,92,255,0.18);
-}
-
-.cs-comboMenu{
+.cs-comboMenu, .cs-combo-menu {
   position: absolute;
   top: calc(100% + 8px);
-  left: 0;
-  right: 0;
-  z-index: 50;
-  max-height: 260px;
-  overflow: auto;
-  border-radius: 14px;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(12,14,18,0.98);
-  box-shadow: 0 20px 50px rgba(0,0,0,0.4);
-}
-
-.cs-comboItem{
-  padding: 10px 12px;
-  cursor: pointer;
-  color: rgba(255,255,255,0.88);
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-}
-
-.cs-comboItem:hover,
-.cs-comboItem.active{
-  background: rgba(124,92,255,0.14);
-}
-
-.cs-comboEmpty{
-  padding: 12px;
-  color: rgba(255,255,255,0.65);
-}
-
-
-/* ---------- Combo Select (Ticket Number textbox + suggestions) ---------- */
-.cs-combo{
-  position: relative;
-  width: 100%;
-}
-
-.cs-combo-input{
-  width: 100%;
-  /* Your global input styling will apply automatically since this is still an <input> */
-}
-
-/* Floating dropdown panel */
-.cs-combo-menu{
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: calc(100% + 8px);
+  left: 0; right: 0;
   z-index: 9999;
-
-  display: none;            /* JS toggles this */
   max-height: 280px;
   overflow: auto;
-
-  background: rgba(12, 14, 22, 0.98);
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 14px;
-  box-shadow: 0 24px 70px rgba(0,0,0,0.55);
-  backdrop-filter: blur(10px);
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: rgba(12,14,22,0.98);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(16px);
 }
+.cs-combo-menu { display: none; }
 
-.cs-combo-item{
-  padding: 10px 12px;
+.cs-comboItem, .cs-combo-item {
+  padding: 10px 13px;
   cursor: pointer;
   font-size: 13px;
-  line-height: 1.25;
+  font-family: inherit;
   color: rgba(255,255,255,0.86);
-  white-space: normal;      /* allow dept/category wrapping */
   border-bottom: 1px solid rgba(255,255,255,0.06);
+  transition: background 0.12s ease;
+  white-space: normal;
+  line-height: 1.35;
+}
+.cs-comboItem:last-child, .cs-combo-item:last-child { border-bottom: none; }
+
+.cs-comboItem:hover, .cs-comboItem.active,
+.cs-combo-item:hover {
+  background: rgba(108,99,255,0.16);
 }
 
-.cs-combo-item:last-child{
-  border-bottom: none;
-}
-
-.cs-combo-item:hover{
-  background: rgba(124, 92, 255, 0.14);
-}
-
-.cs-combo-empty{
-  padding: 10px 12px;
-  color: rgba(255,255,255,0.55);
+.cs-comboEmpty, .cs-combo-empty {
+  padding: 11px 13px;
+  color: var(--muted);
   font-size: 12px;
 }
 
-/* If any parent is clipping dropdown, this prevents it */
-.cs-combo{
-  overflow: visible;
-}
-
-.sm-readonly{
-  opacity: .75;
-  cursor: not-allowed;
-}
-.sm-readonly:focus{
-  box-shadow: none !important;
-  border-color: rgba(255,255,255,0.14) !important;
-}
-
-
-/* ===== Sheets-like grid look ===== */
-
-/* Table should fill width */
-.sm-table,
-#smTable {
+/* =========================================================
+   Sheets-like grid (Students Admin)
+   ========================================================= */
+.sm-table, #smTable {
   width: 100%;
   table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
 }
 
-/* Grid lines */
-#smTbody td,
-#smThead th {
-  border-right: 1px solid rgba(255,255,255,0.08);
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+#smTbody td, #smThead th {
+  border-right: 1px solid rgba(255,255,255,0.07);
+  border-bottom: 1px solid rgba(255,255,255,0.07);
 }
+#smThead th:first-child, #smTbody td:first-child {
+  border-left: 1px solid rgba(255,255,255,0.07);
+}
+#smThead th { border-top: 1px solid rgba(255,255,255,0.07); }
 
-/* Left border + top border (so grid looks complete) */
-#smThead th:first-child,
-#smTbody td:first-child {
-  border-left: 1px solid rgba(255,255,255,0.08);
-}
-#smThead th {
-  border-top: 1px solid rgba(255,255,255,0.08);
-}
-
-/* Remove rounded “pill” look from inputs */
 input.sm-cell {
   width: 100%;
   height: 34px;
   padding: 0 10px;
-
   border: none !important;
   border-radius: 0 !important;
-
   background: transparent !important;
   box-shadow: none !important;
   outline: none !important;
-
-  color: rgba(255,255,255,0.92);
+  color: var(--text);
   font-size: 12px;
+  font-family: inherit;
 }
-
-/* Focus = like spreadsheet highlight */
 #smTbody td:focus-within {
-  background: rgba(124,92,255,0.10);
-  box-shadow: inset 0 0 0 1px rgba(124,92,255,0.55);
+  background: rgba(108,99,255,0.09);
+  box-shadow: inset 0 0 0 1.5px rgba(108,99,255,0.55);
 }
-
-/* Readonly cells look disabled */
 input.sm-cell.sm-readonly {
-  color: rgba(255,255,255,0.55);
+  color: var(--muted);
   cursor: not-allowed;
 }
-
-/* Remove any td padding that makes it look like pills */
-#smTbody td {
-  padding: 0;
-}
-
-/* Header spacing */
+#smTbody td { padding: 0; }
 #smThead th {
-  padding: 10px 10px;
-  font-size: 12px;
-  font-weight: 600;
-  color: rgba(255,255,255,0.80);
-  background: rgba(0,0,0,0.25);
+  padding: 10px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: rgba(0,0,0,0.30);
 }
 
-/* Header layout */
-.sm-colhead-inner{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:10px;
+.sm-colhead-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
-/* Delete column button hidden until hover */
-.sm-col-del{
-  opacity:0;
-  pointer-events:none;
-  background:transparent;
-  border:none;
-  cursor:pointer;
-  font-size:14px;
-  color: rgba(255,255,255,0.75);
+.sm-col-del {
+  opacity: 0;
+  pointer-events: none;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+  transition: opacity var(--dur) ease, color var(--dur) ease;
 }
-th.sm-colhead:hover .sm-col-del{
-  opacity:1;
-  pointer-events:auto;
+th.sm-colhead:hover .sm-col-del {
+  opacity: 1;
+  pointer-events: auto;
+  color: var(--danger);
 }
 
-/* Add column (+) in last header */
-.sm-col-add{
-  width:28px;
-  height:28px;
-  border-radius:10px;
-  border:1px solid rgba(255,255,255,0.10);
+.sm-col-add {
+  width: 26px; height: 26px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.10);
   background: rgba(255,255,255,0.04);
-  color: rgba(255,255,255,0.85);
-  cursor:pointer;
+  color: var(--text);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color var(--dur) ease, background var(--dur) ease;
 }
-.sm-col-add:hover{
-  border-color: rgba(124,92,255,0.55);
-  background: rgba(124,92,255,0.12);
+.sm-col-add:hover {
+  border-color: rgba(108,99,255,0.55);
+  background: rgba(108,99,255,0.14);
 }
 
-/* Row delete icon button */
-.sm-icon-btn{
-  width:34px;
-  height:34px;
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  border-radius:10px;
-  border:1px solid rgba(255,255,255,0.10);
+.sm-icon-btn {
+  width: 32px; height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  border: 1px solid rgba(255,255,255,0.10);
   background: rgba(255,255,255,0.04);
-  cursor:pointer;
-  color: rgba(255,255,255,0.8);
+  cursor: pointer;
+  color: var(--muted);
+  transition: border-color var(--dur) ease,
+              background var(--dur) ease,
+              color var(--dur) ease;
 }
-.sm-icon-btn.danger:hover{
-  border-color: rgba(255,77,109,0.55);
-  background: rgba(255,77,109,0.12);
+.sm-icon-btn.danger:hover {
+  border-color: rgba(244,63,94,0.55);
+  background: rgba(244,63,94,0.14);
+  color: #fda4af;
+}
+
+/* =========================================================
+   Performance optimisations
+   ========================================================= */
+.card, .topbar, .custom-select-container .options-menu {
+  will-change: transform;
 }
