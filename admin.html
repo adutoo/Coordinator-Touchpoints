@@ -4,9 +4,6 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Coordinator Touchpoints — Admin</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>
@@ -137,35 +134,6 @@
         </div>
 
         <div id="callPromptMsg" class="notice" style="display:none;"></div>
-      </div>
-
-      <!-- ✅ Ticket Email Notifications (Apps Script Webhook) -->
-      <div class="card span6">
-        <h2>Ticket Email Notifications</h2>
-        <p class="muted">
-          When a ticket is created, an automated HTML email is sent to the <b>POR</b>.
-          Paste your <b>Google Apps Script Web App URL</b> below to enable this.
-        </p>
-
-        <div class="form">
-          <div class="field span12">
-            <label>Apps Script Web App URL</label>
-            <input id="ticketEmailWebhookUrl" type="url"
-              placeholder="https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec"
-              style="font-size:12px;" />
-          </div>
-          <div class="field span12" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
-            <button id="ticketEmailSaveBtn" class="btn primary" type="button">Save URL</button>
-            <button id="ticketEmailClearBtn" class="btn" type="button">Clear / Disable</button>
-          </div>
-          <div class="field span12">
-            <p class="muted" style="margin:0;font-size:12px;">
-              ⚙️ <b>How to get this URL:</b> script.google.com → New Project → paste TicketEmailNotifier.gs → Deploy → New Deployment → Web App → Execute as: <b>Me</b> → Access: <b>Anyone</b> → Deploy → Copy URL.
-            </p>
-          </div>
-        </div>
-
-        <div id="ticketEmailMsg" class="notice" style="display:none;"></div>
       </div>
 
       <!-- ✅ Coordinator Directory -->
@@ -657,45 +625,82 @@
         <div id="pocMsg" class="notice" style="display:none;"></div>
       </div>
 
-      <!-- Class POR Map (replaces old Department POR Map) -->
+      <!-- Ticket Validation: Class → POC Map -->
       <div class="card span6">
-        <h2>Class POR Map</h2>
-        <p class="muted">Assign a <b>Point Of Resolution</b> based on student's class. Select one or more classes and enter the POR email.</p>
+        <h2>Ticket Validation — Class → POC Map</h2>
+        <p class="muted">Assign a POC to one or more classes. When a ticket is raised, the POC is auto-set by the student's class. One POC can cover many classes.</p>
 
-        <form id="addClassPorForm" class="form">
-          <div class="field span6">
-            <label>POR Email</label>
-            <input id="classPorEmail" type="email" placeholder="por@school.com" required />
-          </div>
-          <div class="field span6">
-            <label>POR Name <span style="opacity:.6;font-size:12px;">(optional)</span></label>
-            <input id="classPorName" type="text" placeholder="e.g., Ms. Sharma" />
-          </div>
+        <div class="form">
           <div class="field span12">
-            <label>Select Classes to Assign</label>
-            <div id="classPorClassList" style="display:flex;flex-wrap:wrap;gap:4px;padding:10px 0;">
-              <span style="opacity:.6;">Loading classes…</span>
+            <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <label style="margin:0;">Select Classes</label>
+              <button id="classPocRefreshClasses" class="btn" type="button" style="padding:4px 12px; font-size:12px;">↻ Refresh List</button>
             </div>
+            <select id="classPocClasses" multiple style="width:100%; min-height:130px; border-radius:12px; border:1px solid rgba(255,255,255,0.14); background:rgba(0,0,0,0.22); color:rgba(255,255,255,0.9); padding:8px; font-size:13px;">
+              <option disabled>Loading classes…</option>
+            </select>
+            <div class="muted" style="margin-top:5px; font-size:12px;">Hold <b>Ctrl</b> (Windows) or <b>⌘ Cmd</b> (Mac) to select multiple classes at once.</div>
           </div>
+
           <div class="field span12">
-            <button class="btn primary" type="submit">Save Mapping</button>
+            <label>POC Email</label>
+            <input id="classPocEmail" type="email" placeholder="poc@school.com" />
           </div>
-        </form>
+
+          <div class="field span12">
+            <button id="classPocSave" class="btn primary" type="button">Save Mapping</button>
+          </div>
+        </div>
 
         <div class="tablewrap maxh" style="margin-top:10px;">
           <table>
             <thead>
               <tr>
                 <th>Class</th>
+                <th>POC Email</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="classPocRows"></tbody>
+          </table>
+        </div>
+
+        <div id="classPocMsg" class="notice" style="display:none;"></div>
+      </div>
+
+      <!-- Ticket Validation: POR Map -->
+      <div class="card span6">
+        <h2>Ticket Validation — POR Map</h2>
+        <p class="muted">Maps Department → Point Of Resolution Email.</p>
+
+        <form id="addPorForm" class="form">
+          <div class="field span6">
+            <label>Department</label>
+            <select id="porDept" data-placeholder="Select department..."></select>
+          </div>
+          <div class="field span6">
+            <label>POR Email</label>
+            <input id="porEmail" type="email" placeholder="por@school.com" required />
+          </div>
+          <div class="field span12">
+            <button class="btn primary" type="submit">Save Mapping</button>
+          </div>
+        </form>
+
+        <div class="tablewrap maxh">
+          <table>
+            <thead>
+              <tr>
+                <th>Department</th>
                 <th>POR</th>
                 <th>Action</th>
               </tr>
             </thead>
-            <tbody id="classPorRows"></tbody>
+            <tbody id="porRows"></tbody>
           </table>
         </div>
 
-        <div id="classPorMsg" class="notice" style="display:none;"></div>
+        <div id="porMsg" class="notice" style="display:none;"></div>
       </div>
 
     </div>
