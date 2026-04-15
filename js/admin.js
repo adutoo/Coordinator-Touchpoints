@@ -1683,18 +1683,34 @@ async function loadClassPocClasses() {
   sel.innerHTML = `<option disabled>Loading…</option>`;
 
   try {
-    const { data, error } = await sb
-      .from("students")
-      .select("class_name")
-      .not("class_name", "is", null)
-      .neq("class_name", "")
-      .order("class_name");
-    if (error) throw error;
+    // Paginate through all rows to avoid Supabase's default 1000-row limit
+    const classSet = new Set();
+    const chunk = 1000;
+    let offset = 0;
 
-    // Deduplicate + sort
-    const classes = [...new Set(
-      (data || []).map(r => (r.class_name || "").trim()).filter(Boolean)
-    )].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    while (true) {
+      const { data, error } = await sb
+        .from("students")
+        .select("class_name")
+        .not("class_name", "is", null)
+        .neq("class_name", "")
+        .order("class_name")
+        .range(offset, offset + chunk - 1);
+
+      if (error) throw error;
+      if (!data?.length) break;
+
+      for (const r of data) {
+        const v = (r.class_name || "").trim();
+        if (v) classSet.add(v);
+      }
+
+      offset += data.length;
+      if (data.length < chunk) break; // last page
+    }
+
+    const classes = Array.from(classSet)
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
     if (!classes.length) {
       sel.innerHTML = `<option disabled>No classes found in students table</option>`;

@@ -538,10 +538,9 @@ function buildSelectHtml({ ticketNumber, fieldName, value, options, placeholder,
 }
 
 function renderEditable(ticket, meEmail, derived) {
-  const canEdit =
-    __isAdmin ||
-    (ticket.point_of_contact === meEmail) ||
-    (ticket.point_of_resolution === meEmail);
+  // Any logged-in user (coordinator or admin) can edit the coordinator-facing fields.
+  // The page is already auth-protected, so checking for a valid session email is sufficient.
+  const canEdit = !!meEmail;
 
   const ticketNo = ticket.ticket_number;
 
