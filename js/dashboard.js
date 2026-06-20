@@ -5,13 +5,11 @@ import { withBusy, setBusyProgress } from "./busy.js";
 
 const kpisEl = document.getElementById("kpis");
 const recentRows = document.getElementById("recentRows");
-const todayByCoord = document.getElementById("todayByCoord");
-const weekByCoord = document.getElementById("weekByCoord");
+const recentTicketsRows = document.getElementById("recentTicketsRows");
 
-// ✅ Optional (only if you add these tables in dashboard.html)
-const recentTicketsRows = document.getElementById("recentTicketsRows"); // tbody
-const todayTicketsByDept = document.getElementById("todayTicketsByDept"); // tbody
-const weekTicketsByDept = document.getElementById("weekTicketsByDept"); // tbody
+const compToday = document.getElementById("compToday");
+const compWeek = document.getElementById("compWeek");
+const compMonth = document.getElementById("compMonth");
 
 function startOfDay(d) {
   const x = new Date(d);
@@ -42,95 +40,21 @@ async function runBusy(title, fn) {
   }
 }
 
-// -------------------- Touchpoints counts by owner --------------------
-async function loadOwnerCounts(tbodyEl, start, end) {
-  if (!tbodyEl) return;
-  tbodyEl.innerHTML = `<tr><td colspan="2">Loading...</td></tr>`;
-
-  const { data, error } = await sb.rpc("tp_counts_by_owner", {
-    p_start: start.toISOString(),
-    p_end: end.toISOString(),
-  });
-
-  if (error) {
-    tbodyEl.innerHTML = `<tr><td colspan="2">${error.message}</td></tr>`;
-    return;
+function updateComparison(el, yourCount, schoolCount) {
+  if (!el) return;
+  const boxes = el.querySelectorAll(".stat-value");
+  if (boxes.length >= 2) {
+    boxes[0].textContent = yourCount;
+    boxes[1].textContent = schoolCount;
   }
-
-  if (!data?.length) {
-    tbodyEl.innerHTML = `<tr><td colspan="2">No entries.</td></tr>`;
-    return;
-  }
-
-  tbodyEl.innerHTML = data
-    .map(
-      (r) => `
-    <tr>
-      <td>${r.owner_name ?? "(Unknown)"}</td>
-      <td>${r.entries ?? 0}</td>
-    </tr>
-  `
-    )
-    .join("");
-}
-
-// -------------------- Tickets counts by department (optional tables) --------------------
-async function loadTicketDeptCounts(tbodyEl, start, end) {
-  if (!tbodyEl) return;
-
-  tbodyEl.innerHTML = `<tr><td colspan="2">Loading...</td></tr>`;
-
-  const counts = new Map();
-  const chunk = 1000;
-  let offset = 0;
-
-  while (true) {
-    const { data, error } = await sb
-      .from("tickets")
-      .select("department")
-      .gte("raised_at", start.toISOString())
-      .lt("raised_at", end.toISOString())
-      .range(offset, offset + chunk - 1);
-
-    if (error) {
-      tbodyEl.innerHTML = `<tr><td colspan="2">${error.message}</td></tr>`;
-      return;
-    }
-
-    if (!data?.length) break;
-
-    for (const r of data) {
-      const k = (r.department || "(Blank)").toString();
-      counts.set(k, (counts.get(k) || 0) + 1);
-    }
-
-    offset += data.length;
-    if (data.length < chunk) break;
-  }
-
-  if (counts.size === 0) {
-    tbodyEl.innerHTML = `<tr><td colspan="2">No tickets.</td></tr>`;
-    return;
-  }
-
-  const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
-
-  tbodyEl.innerHTML = sorted
-    .map(
-      ([dept, n]) => `
-      <tr>
-        <td>${dept}</td>
-        <td>${n}</td>
-      </tr>
-    `
-    )
-    .join("");
 }
 
 (async () => {
   await runBusy("Loading dashboard…", async () => {
     setBusyProgress(null, "Loading navigation…");
-    await mountNav("dashboard");
+    const { me, profile } = await mountNav("dashboard");
+
+    const ownerName = profile?.display_name ?? "";
 
     const now = new Date();
     const todayStart = startOfDay(now);
@@ -142,73 +66,77 @@ async function loadTicketDeptCounts(tbodyEl, start, end) {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const monthEnd = tomorrowStart;
 
-    // KPIs (Touchpoints + Tickets)
+    // KPIs — Your entries + School entries
     setBusyProgress(10, "Loading KPIs…");
 
-    // ✅ FIX: use proper ranges (gte + lt) so month/week/today never counts wrong
     const [
-      totalTP,
-      todayTP,
-      weekTP,
-      monthTP,
-
-      totalT,
-      todayT,
-      weekT,
-      monthT,
+      // School totals
+      totalTP, todayTP, weekTP, monthTP,
+      totalT, todayT, weekT, monthT,
+      // Your totals
+      myTodayTP, myWeekTP, myMonthTP, myTotalTP,
+      myTotalT,
     ] = await Promise.all([
-      // totals (no range)
+      // School totals
       sb.from("touchpoints").select("id", { count: "exact", head: true }),
-      // ranges
-      sb.from("touchpoints")
-        .select("id", { count: "exact", head: true })
+      sb.from("touchpoints").select("id", { count: "exact", head: true })
         .gte("touch_timestamp", todayStart.toISOString())
         .lt("touch_timestamp", tomorrowStart.toISOString()),
-      sb.from("touchpoints")
-        .select("id", { count: "exact", head: true })
+      sb.from("touchpoints").select("id", { count: "exact", head: true })
         .gte("touch_timestamp", weekStart.toISOString())
         .lt("touch_timestamp", weekEnd.toISOString()),
-      sb.from("touchpoints")
-        .select("id", { count: "exact", head: true })
+      sb.from("touchpoints").select("id", { count: "exact", head: true })
         .gte("touch_timestamp", monthStart.toISOString())
         .lt("touch_timestamp", monthEnd.toISOString()),
 
-      // tickets totals
+      // Tickets school totals
       sb.from("tickets").select("ticket_number", { count: "exact", head: true }),
-      // tickets ranges
-      sb.from("tickets")
-        .select("ticket_number", { count: "exact", head: true })
+      sb.from("tickets").select("ticket_number", { count: "exact", head: true })
         .gte("raised_at", todayStart.toISOString())
         .lt("raised_at", tomorrowStart.toISOString()),
-      sb.from("tickets")
-        .select("ticket_number", { count: "exact", head: true })
+      sb.from("tickets").select("ticket_number", { count: "exact", head: true })
         .gte("raised_at", weekStart.toISOString())
         .lt("raised_at", weekEnd.toISOString()),
-      sb.from("tickets")
-        .select("ticket_number", { count: "exact", head: true })
+      sb.from("tickets").select("ticket_number", { count: "exact", head: true })
         .gte("raised_at", monthStart.toISOString())
         .lt("raised_at", monthEnd.toISOString()),
+
+      // Your touchpoint counts
+      sb.from("touchpoints").select("id", { count: "exact", head: true })
+        .eq("owner_name", ownerName)
+        .gte("touch_timestamp", todayStart.toISOString())
+        .lt("touch_timestamp", tomorrowStart.toISOString()),
+      sb.from("touchpoints").select("id", { count: "exact", head: true })
+        .eq("owner_name", ownerName)
+        .gte("touch_timestamp", weekStart.toISOString())
+        .lt("touch_timestamp", weekEnd.toISOString()),
+      sb.from("touchpoints").select("id", { count: "exact", head: true })
+        .eq("owner_name", ownerName)
+        .gte("touch_timestamp", monthStart.toISOString())
+        .lt("touch_timestamp", monthEnd.toISOString()),
+      sb.from("touchpoints").select("id", { count: "exact", head: true })
+        .eq("owner_name", ownerName),
+
+      // Your ticket count
+      sb.from("tickets").select("ticket_number", { count: "exact", head: true })
+        .eq("reporter_email", me?.email ?? ""),
     ]);
 
+    // KPI pills: Your entries
     const cards = [
-      // touchpoints
-      { value: totalTP.count ?? 0, label: "Total Entries" },
-      { value: todayTP.count ?? 0, label: "Entries Today" },
-      { value: weekTP.count ?? 0, label: "Entries This Week" },
-      { value: monthTP.count ?? 0, label: "Entries This Month" },
-
-      // tickets
-      { value: totalT.count ?? 0, label: "Total Tickets" },
-      { value: todayT.count ?? 0, label: "Tickets Today" },
-      { value: weekT.count ?? 0, label: "Tickets This Week" },
-      { value: monthT.count ?? 0, label: "Tickets This Month" },
+      { value: myTotalTP.count ?? 0, label: "Your Total Entries" },
+      { value: myTodayTP.count ?? 0, label: "Your Entries Today" },
+      { value: myWeekTP.count ?? 0, label: "Your Entries This Week" },
+      { value: myMonthTP.count ?? 0, label: "Your Entries This Month" },
+      { value: totalT.count ?? 0, label: "School Total Tickets" },
+      { value: myTotalT.count ?? 0, label: "Your Total Tickets" },
     ];
 
     if (kpisEl) {
       kpisEl.innerHTML = cards
         .map(
-          (c) => `
-        <div class="pill">
+          (c, i) => `
+        <div class="pill ${i >= 4 ? 'orange' : ''}">
           <b>${c.value}</b>
           <span>${c.label}</span>
         </div>
@@ -217,24 +145,30 @@ async function loadTicketDeptCounts(tbodyEl, start, end) {
         .join("");
     }
 
-    // Recent touchpoints
-    setBusyProgress(35, "Loading recent entries…");
+    // Competitive comparison boxes
+    setBusyProgress(40, "Loading comparisons…");
+    updateComparison(compToday, myTodayTP.count ?? 0, todayTP.count ?? 0);
+    updateComparison(compWeek, myWeekTP.count ?? 0, weekTP.count ?? 0);
+    updateComparison(compMonth, myMonthTP.count ?? 0, monthTP.count ?? 0);
+
+    // Recent touchpoints (yours only)
+    setBusyProgress(55, "Loading recent entries…");
     if (recentRows) {
       const { data: recent, error: recentErr } = await sb
         .from("touchpoints")
-        .select("touch_timestamp, owner_name, child_name, medium, objective")
+        .select("touch_timestamp, child_name, medium, objective")
+        .eq("owner_name", ownerName)
         .order("touch_timestamp", { ascending: false })
         .limit(10);
 
       if (recentErr) {
-        recentRows.innerHTML = `<tr><td colspan="5">${recentErr.message}</td></tr>`;
+        recentRows.innerHTML = `<tr><td colspan="4">${recentErr.message}</td></tr>`;
       } else {
         recentRows.innerHTML = (recent || [])
           .map(
             (r) => `
           <tr>
             <td>${r.touch_timestamp ? new Date(r.touch_timestamp).toLocaleString() : ""}</td>
-            <td>${r.owner_name ?? ""}</td>
             <td>${r.child_name ?? ""}</td>
             <td>${r.medium ?? ""}</td>
             <td>${r.objective ?? ""}</td>
@@ -242,20 +176,25 @@ async function loadTicketDeptCounts(tbodyEl, start, end) {
         `
           )
           .join("");
+
+        if (!recent?.length) {
+          recentRows.innerHTML = `<tr><td colspan="4">No entries yet.</td></tr>`;
+        }
       }
     }
 
-    // ✅ Recent tickets (optional table)
-    setBusyProgress(55, "Loading recent tickets…");
+    // Recent tickets (yours)
+    setBusyProgress(75, "Loading recent tickets…");
     if (recentTicketsRows) {
       const { data: tRecent, error: tErr } = await sb
         .from("tickets")
-        .select("raised_at, ticket_number, student_child_name, department, category, ticket_status")
+        .select("raised_at, ticket_number, student_child_name, department, ticket_status")
+        .eq("reporter_email", me?.email ?? "")
         .order("raised_at", { ascending: false })
         .limit(10);
 
       if (tErr) {
-        recentTicketsRows.innerHTML = `<tr><td colspan="6">${tErr.message}</td></tr>`;
+        recentTicketsRows.innerHTML = `<tr><td colspan="5">${tErr.message}</td></tr>`;
       } else {
         recentTicketsRows.innerHTML = (tRecent || [])
           .map(
@@ -265,24 +204,17 @@ async function loadTicketDeptCounts(tbodyEl, start, end) {
             <td>${t.ticket_number ?? ""}</td>
             <td>${t.student_child_name ?? ""}</td>
             <td>${t.department ?? ""}</td>
-            <td>${t.category ?? ""}</td>
             <td>${t.ticket_status ?? ""}</td>
           </tr>
         `
           )
           .join("");
+
+        if (!tRecent?.length) {
+          recentTicketsRows.innerHTML = `<tr><td colspan="5">No tickets yet.</td></tr>`;
+        }
       }
     }
-
-    // Coordinator activity (touchpoints)
-    setBusyProgress(70, "Loading coordinator stats…");
-    await loadOwnerCounts(todayByCoord, todayStart, tomorrowStart);
-    await loadOwnerCounts(weekByCoord, weekStart, weekEnd);
-
-    // ✅ Ticket stats by department (optional tables)
-    setBusyProgress(85, "Loading ticket department stats…");
-    await loadTicketDeptCounts(todayTicketsByDept, todayStart, tomorrowStart);
-    await loadTicketDeptCounts(weekTicketsByDept, weekStart, weekEnd);
 
     setBusyProgress(100, "Done");
   });

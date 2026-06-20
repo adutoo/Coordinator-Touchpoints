@@ -13,7 +13,6 @@ import {
 } from "./session.js";
 
 const sessionFilter = document.getElementById("sessionFilter");
-const coordFilter = document.getElementById("coordFilter");
 const objectiveFilter = document.getElementById("objectiveFilter");
 const fromDate = document.getElementById("fromDate");
 const toDate = document.getElementById("toDate");
@@ -39,11 +38,12 @@ const PAGE_SIZE = 100;
 let page = 0;
 let totalCount = 0;
 let isAdmin = false;
+let currentUserName = ""; // ← auto-set on boot
 
 function show(text, isError = false) {
   msg.style.display = "block";
-  msg.style.borderColor = isError ? "rgba(255,77,109,0.55)" : "rgba(124,92,255,0.55)";
-  msg.style.color = isError ? "rgba(255,200,210,0.95)" : "rgba(255,255,255,0.72)";
+  msg.style.borderColor = isError ? "rgba(239,68,68,0.55)" : "rgba(37,99,235,0.55)";
+  msg.style.color = isError ? "var(--danger)" : "var(--muted)";
   msg.textContent = text;
 }
 function hideMsg() { msg.style.display = "none"; }
@@ -122,7 +122,7 @@ function setRangeThisMonth() {
   toDate.value = `${clamped.to.getFullYear()}-${pad2(clamped.to.getMonth() + 1)}-${pad2(clamped.to.getDate())}`;
 }
 
-// -------------------- Query builder (session clamps the date range) --------------------
+// -------------------- Query builder (auto-filters to logged-in coordinator) --------------------
 function buildBaseQuery({ includeCount = false } = {}) {
   let query = sb
     .from("touchpoints")
@@ -135,7 +135,11 @@ function buildBaseQuery({ includeCount = false } = {}) {
     .not("medium", "is", null).neq("medium", "")
     .not("objective", "is", null).neq("objective", "");
 
-  if (coordFilter?.value) query = query.eq("owner_name", coordFilter.value);
+  // ✅ Always filter to current user
+  if (currentUserName) {
+    query = query.eq("owner_name", currentUserName);
+  }
+
   if (objectiveFilter?.value) query = query.eq("objective", objectiveFilter.value);
 
   const sessLabel = sessionFilter?.value || getSessionLabel();
@@ -177,19 +181,6 @@ async function detectAdminRaw() {
   return data?.role === "admin";
 }
 
-async function loadCoordinatorsRaw() {
-  const { data, error } = await sb.from("profiles").select("display_name").order("display_name");
-  if (error) throw error;
-
-  const uniq = Array.from(new Set((data || []).map(x => x.display_name).filter(Boolean)));
-  coordFilter.innerHTML =
-    `<option value="">All</option>` +
-    uniq.map(n => `<option value="${n}">${n}</option>`).join("");
-
-  enhanceSelect(coordFilter, { placeholder: "All coordinators", search: true, searchThreshold: 0 });
-  refreshSelect(coordFilter);
-}
-
 async function loadObjectivesRaw() {
   if (!objectiveFilter) return;
 
@@ -212,7 +203,7 @@ async function loadObjectivesRaw() {
 
 async function loadPageRaw() {
   hideMsg();
-  rowsEl.innerHTML = `<tr><td colspan="21">Loading...</td></tr>`;
+  rowsEl.innerHTML = `<tr><td colspan="16">Loading...</td></tr>`;
 
   const from = page * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;
@@ -229,7 +220,7 @@ async function loadPageRaw() {
   nextBtn.disabled = (to + 1) >= totalCount;
 
   if (!data?.length) {
-    rowsEl.innerHTML = `<tr><td colspan="21">No results.</td></tr>`;
+    rowsEl.innerHTML = `<tr><td colspan="16">No results.</td></tr>`;
     return;
   }
 
@@ -238,22 +229,17 @@ async function loadPageRaw() {
       <td>${td(r.child_name)}</td>
       <td>${td(r.medium)}</td>
       <td>${td(r.objective)}</td>
-      <td>${td(r.positives)}</td>
-      <td>${td(r.suggestion)}</td>
+      <td style="white-space:pre-wrap;">${td(r.comments_concat || r.positives || "")}</td>
       <td>${td(r.ticket_number)}</td>
       <td>${td(r.ticket_raised)}</td>
-      <td>${td(r.owner_email)}</td>
       <td>${fmtTS(r.touch_timestamp)}</td>
-      <td>${td(r.correct_owner)}</td>
       <td>${td(r.student_name)}</td>
       <td>${td(r.class_name)}</td>
       <td>${td(r.section)}</td>
       <td>${td(r.sr_number)}</td>
-      <td>${td(r.owner_name)}</td>
       <td>${td(r.week)}</td>
       <td>${td(r.month)}</td>
       <td>${td(r.year)}</td>
-      <td style="white-space:pre-wrap;">${td(r.comments_concat)}</td>
       <td>${td(r.time)}</td>
       <td class="reports-actions">
         ${isAdmin ? `<button class="btn danger" type="button" data-del="${r.id}">Delete</button>` : `<span class="muted">—</span>`}
@@ -302,30 +288,25 @@ async function exportAllFilteredRaw() {
     "Child Name": td(r.child_name),
     "Medium": td(r.medium),
     "Objective": td(r.objective),
-    "Positives / Strengths / What good we are doing": td(r.positives),
-    "Suggestion / Weakness / What we or the student need to improve /Questions": td(r.suggestion),
+    "Summary": td(r.comments_concat || r.positives || ""),
     "Ticket Number": td(r.ticket_number),
     "Ticket raised?": td(r.ticket_raised),
-    "Owner": td(r.owner_email),
     "Timestamp": fmtTS(r.touch_timestamp),
-    "Correct Owner": td(r.correct_owner),
     "Name": td(r.student_name),
     "Class": td(r.class_name),
     "Section": td(r.section),
     "SR Number": td(r.sr_number),
-    "Owner Name": td(r.owner_name),
     "Week": td(r.week),
     "Month": td(r.month),
     "Year": td(r.year),
-    "Comments Concat": td(r.comments_concat),
     "Time": td(r.time),
   }));
 
   const ws = window.XLSX.utils.json_to_sheet(rows);
   const wb = window.XLSX.utils.book_new();
-  window.XLSX.utils.book_append_sheet(wb, ws, "Report");
+  window.XLSX.utils.book_append_sheet(wb, ws, "My Entries");
 
-  const name = `Coordinator_Touchpoints_Report_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  const name = `My_Entries_Report_${new Date().toISOString().slice(0, 10)}.xlsx`;
   window.XLSX.writeFile(wb, name);
 
   show(`Exported ${rows.length} rows ✅`);
@@ -333,12 +314,12 @@ async function exportAllFilteredRaw() {
 
 // ---------- PUBLIC wrappers ----------
 async function loadPage() {
-  await withBusy("Loading report…", async () => {
+  await withBusy("Loading entries…", async () => {
     setBusyProgress(null, "Loading data…");
     await loadPageRaw();
   }).catch((err) => {
     console.error(err);
-    rowsEl.innerHTML = `<tr><td colspan="21">${td(err?.message || String(err))}</td></tr>`;
+    rowsEl.innerHTML = `<tr><td colspan="16">${td(err?.message || String(err))}</td></tr>`;
     show(err?.message || String(err), true);
   });
 }
@@ -414,22 +395,22 @@ function initSessionUI() {
 
 // ---------- Boot ----------
 (async () => {
-  await mountNav("reports");
+  const { me, profile } = await mountNav("reports");
 
-  await withBusy("Loading reports…", async () => {
+  // ✅ Set current user name for auto-filtering
+  currentUserName = profile?.display_name ?? "";
+
+  await withBusy("Loading entries…", async () => {
     setBusyProgress(null, "Checking access…");
     isAdmin = await detectAdminRaw();
 
     setBusyProgress(null, "Loading session…");
     initSessionUI();
 
-    setBusyProgress(null, "Loading coordinators…");
-    await loadCoordinatorsRaw();
-
     setBusyProgress(null, "Loading objectives…");
     await loadObjectivesRaw();
 
-    setBusyProgress(null, "Loading report…");
+    setBusyProgress(null, "Loading entries…");
     await loadPageRaw();
   }).catch((err) => {
     console.error(err);
@@ -441,9 +422,6 @@ function initSessionUI() {
 applyBtn.addEventListener("click", async () => { page = 0; await loadPage(); });
 
 clearBtn.addEventListener("click", async () => {
-  coordFilter.value = "";
-  refreshSelect(coordFilter);
-
   if (objectiveFilter) {
     objectiveFilter.value = "";
     refreshSelect(objectiveFilter);
@@ -451,7 +429,7 @@ clearBtn.addEventListener("click", async () => {
 
   q.value = "";
 
-  // Reset to session boundaries (NOT last 7 days)
+  // Reset to session boundaries
   const sess = sessionFilter?.value || getSessionLabel();
   applySessionToDateInputs(fromDate, toDate, sess);
 

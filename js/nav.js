@@ -44,13 +44,11 @@ export async function mountNav(activePage) {
       <div class="nav">
         ${link("dashboard.html", "dashboard", "Dashboard")}
         ${link("entry.html", "entry", "New Entry")}
-        ${link("reports.html", "reports", "Reports")}
+        ${link("reports.html", "reports", "My Entries")}
 
         ${link("ticket_entry.html", "ticket_entry", "Ticket Entry")}
         ${link("ticket_reports.html", "ticket_reports", "Ticket Reports")}
 
-        <!-- ✅ New Call page -->
-        ${link("callReports.html", "call_reports", "Call Reports")}
         ${isAdmin ? link("students_admin.html", "students_admin", "Students") : ""}
 
         ${isAdmin ? link("admin.html", "admin", "Admin") : ""}

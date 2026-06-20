@@ -102,17 +102,17 @@ function tryApplyPrefillToFirstBlock() {
 
   const refs = blockRefs(block);
 
-  let pos = String(__callPrefill.positives ?? "").trim();
-  let sug = String(__callPrefill.suggestions ?? "").trim();
+  let summaryText = "";
+  const pos = String(__callPrefill.positives ?? "").trim();
+  const sug = String(__callPrefill.suggestions ?? "").trim();
 
-  if ((!pos && !sug) && __callPrefill.summary) {
-    const out = splitSummary(__callPrefill.summary);
-    pos = out.positives;
-    sug = out.suggestions;
+  if (__callPrefill.summary) {
+    summaryText = __callPrefill.summary.trim();
+  } else if (pos || sug) {
+    summaryText = [pos, sug].filter(Boolean).join("\n");
   }
 
-  if (refs.positives && pos) refs.positives.value = pos;
-  if (refs.suggestion && sug) refs.suggestion.value = sug;
+  if (refs.summary && summaryText) refs.summary.value = summaryText;
 
   const desired = desiredMediumFromCallType(__callPrefill.call_type);
   const mediumLabel = findMediumLabelCaseInsensitive(desired);
@@ -132,8 +132,7 @@ function tryApplyPrefillToFirstBlock() {
     } catch {}
   }
 
-  if (refs.positives) refs.positives.dispatchEvent(new Event("input", { bubbles: true }));
-  if (refs.suggestion) refs.suggestion.dispatchEvent(new Event("input", { bubbles: true }));
+  if (refs.summary) refs.summary.dispatchEvent(new Event("input", { bubbles: true }));
 
   console.log("[callPrefill] applied into first entry block:", __callPrefill);
 
@@ -146,8 +145,8 @@ function tryApplyPrefillToFirstBlock() {
 function show(text, isError = false) {
   if (!msg) return;
   msg.style.display = "block";
-  msg.style.borderColor = isError ? "rgba(255,77,109,0.55)" : "rgba(124,92,255,0.55)";
-  msg.style.color = isError ? "rgba(255,200,210,0.95)" : "rgba(255,255,255,0.72)";
+  msg.style.borderColor = isError ? "rgba(239,68,68,0.55)" : "rgba(37,99,235,0.55)";
+  msg.style.color = isError ? "#ef4444" : "var(--muted)";
   msg.textContent = text;
 }
 function hideMsg() {
@@ -227,8 +226,7 @@ function blockRefs(block) {
     // ✅ Referral status dropdown
     referralStatus: q('select[data-field="referralStatus"]'),
 
-    positives: q('textarea[data-field="positives"]'),
-    suggestion: q('textarea[data-field="suggestion"]'),
+    summary: q('textarea[data-field="summary"]'),
 
     ticketRaised: q('select[data-field="ticketRaised"]'),
     ticketNumberHost: q('select[data-field="ticketNumber"]') || q('input[data-field="ticketNumber"]') || null,
@@ -328,9 +326,9 @@ function installTicketCombo(refs) {
   list.style.maxHeight = "260px";
   list.style.overflow = "auto";
   list.style.borderRadius = "14px";
-  list.style.border = "1px solid rgba(255,255,255,0.14)";
-  list.style.background = "rgba(10,10,18,0.98)";
-  list.style.boxShadow = "0 16px 40px rgba(0,0,0,0.45)";
+  list.style.border = "1px solid var(--border)";
+  list.style.background = "#fff";
+  list.style.boxShadow = "0 10px 40px rgba(0,0,0,0.08)";
   list.style.padding = "6px";
 
   if (host.tagName === "SELECT") {
@@ -385,7 +383,7 @@ function installTicketCombo(refs) {
         });
 
     if (!filtered.length) {
-      list.innerHTML = `<div style="padding:10px 12px;opacity:.7;">No tickets found for this student (or access denied).</div>`;
+      list.innerHTML = `<div style="padding:10px 12px;color:var(--muted);">No tickets found for this student (or access denied).</div>`;
       return;
     }
 
@@ -393,9 +391,9 @@ function installTicketCombo(refs) {
       .map(
         (t) => `
       <div data-ticket="${escAttr(t.ticket_number)}"
-           style="padding:10px 12px;border-radius:12px;cursor:pointer;border:1px solid rgba(255,255,255,0.06);margin:6px 0;">
-        <div style="font-weight:700;opacity:.95;">${escText(t.ticket_number)}</div>
-        <div style="font-size:12px;opacity:.72;white-space:normal;">${escText(metaLine(t))}</div>
+           style="padding:10px 12px;border-radius:8px;cursor:pointer;border:1px solid var(--border-light);margin:6px 0;">
+        <div style="font-weight:600;color:var(--text);">${escText(t.ticket_number)}</div>
+        <div style="font-size:12px;color:var(--muted);white-space:normal;">${escText(metaLine(t))}</div>
       </div>
     `
       )
@@ -598,8 +596,7 @@ function createBlock(cloneFrom = null) {
       refs.referralStatus.value = v;
     }
 
-    if (refs.positives) refs.positives.value = src.positives?.value || "";
-    if (refs.suggestion) refs.suggestion.value = src.suggestion?.value || "";
+    if (refs.summary) refs.summary.value = src.summary?.value || "";
   }
 
   fillStudentAuto(refs);
@@ -719,8 +716,9 @@ form?.addEventListener("submit", async (e) => {
     }
 
     const s = studentsByChild.get(child_name);
-    const positives = refs.positives?.value?.trim() || "";
-    const suggestion = refs.suggestion?.value?.trim() || "";
+    const summaryText = refs.summary?.value?.trim() || "";
+    const positives = summaryText;
+    const suggestion = "";
 
     const ticket_raised = refs.ticketRaised?.value ? refs.ticketRaised.value : null;
     const combo = refs.ticketNumberHost?._ticketCombo;
@@ -729,8 +727,7 @@ form?.addEventListener("submit", async (e) => {
     const time_min = fillTimeAuto(refs);
     const timeText = `${time_min} min`;
 
-    const comments_concat =
-      positives && suggestion ? `${positives}\n${suggestion}` : positives ? positives : suggestion ? suggestion : "";
+    const comments_concat = summaryText;
 
     // ✅ Referral status capture (optional)
     const referral_status = (refs.referralStatus?.value || "").trim();

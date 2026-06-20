@@ -4,6 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Coordinator Touchpoints — Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>
@@ -11,21 +14,51 @@
     <div id="navHolder"></div>
 
     <div class="grid">
+
+      <!-- Your Stats vs School Stats -->
       <div class="card span6">
-        <h2>Overview</h2>
-        <p class="muted">Counts update from Supabase.</p>
+        <h2>Your Overview</h2>
+        <p class="muted">Your entries compared to the whole school.</p>
         <div class="kpi" id="kpis"></div>
       </div>
 
       <div class="card span6">
-        <h2>Recent Entries</h2>
-        <p class="muted">Latest touchpoints (all coordinators).</p>
+        <h2>Your Activity vs School</h2>
+        <p class="muted">How you're doing compared to everyone.</p>
+
+        <div style="display:flex;flex-direction:column;gap:16px;margin-top:12px;">
+          <div>
+            <p class="muted" style="margin:0 0 8px 0;font-weight:600;color:var(--text);">Today</p>
+            <div class="stat-comparison" id="compToday">
+              <div class="stat-box you"><span class="stat-value">–</span><span class="stat-label">Your Entries</span></div>
+              <div class="stat-box school"><span class="stat-value">–</span><span class="stat-label">School Total</span></div>
+            </div>
+          </div>
+          <div>
+            <p class="muted" style="margin:0 0 8px 0;font-weight:600;color:var(--text);">This Week</p>
+            <div class="stat-comparison" id="compWeek">
+              <div class="stat-box you"><span class="stat-value">–</span><span class="stat-label">Your Entries</span></div>
+              <div class="stat-box school"><span class="stat-value">–</span><span class="stat-label">School Total</span></div>
+            </div>
+          </div>
+          <div>
+            <p class="muted" style="margin:0 0 8px 0;font-weight:600;color:var(--text);">This Month</p>
+            <div class="stat-comparison" id="compMonth">
+              <div class="stat-box you"><span class="stat-value">–</span><span class="stat-label">Your Entries</span></div>
+              <div class="stat-box school"><span class="stat-value">–</span><span class="stat-label">School Total</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card span6">
+        <h2>Your Recent Entries</h2>
+        <p class="muted">Your latest touchpoints.</p>
         <div class="tablewrap">
           <table>
             <thead>
               <tr>
                 <th>Timestamp</th>
-                <th>Owner</th>
                 <th>Child</th>
                 <th>Medium</th>
                 <th>Objective</th>
@@ -37,27 +70,20 @@
       </div>
 
       <div class="card span6">
-        <h2>Coordinator Activity (Today)</h2>
-        <p class="muted">Who logged how many touchpoints today.</p>
+        <h2>Your Recent Tickets</h2>
+        <p class="muted">Your latest tickets.</p>
         <div class="tablewrap">
           <table>
             <thead>
-              <tr><th>Coordinator</th><th>Entries</th></tr>
+              <tr>
+                <th>Date</th>
+                <th>Ticket #</th>
+                <th>Student</th>
+                <th>Department</th>
+                <th>Status</th>
+              </tr>
             </thead>
-            <tbody id="todayByCoord"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="card span6">
-        <h2>Coordinator Activity (This Week)</h2>
-        <p class="muted">Monday → today (current week).</p>
-        <div class="tablewrap">
-          <table>
-            <thead>
-              <tr><th>Coordinator</th><th>Entries</th></tr>
-            </thead>
-            <tbody id="weekByCoord"></tbody>
+            <tbody id="recentTicketsRows"></tbody>
           </table>
         </div>
       </div>

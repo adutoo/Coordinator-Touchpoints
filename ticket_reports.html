@@ -6,7 +6,7 @@
   <title>Coordinator Touchpoints — Ticket Reports</title>
   <link rel="stylesheet" href="css/styles.css" />
 
-  <!-- Small local styles only for Ticket Status multiselect (matches your dark UI) -->
+  <!-- Small local styles only for Ticket Status multiselect (light theme) -->
   <style>
     .ms-wrap { position: relative; }
     .ms-btn{
@@ -15,24 +15,26 @@
       align-items:center;
       justify-content:space-between;
       gap:10px;
-      padding:10px 12px;
-      border-radius:14px;
-      border:1px solid rgba(255,255,255,0.14);
-      background: rgba(0,0,0,0.18);
-      color: rgba(255,255,255,0.90);
+      padding:9px 12px;
+      border-radius:8px;
+      border:1px solid var(--border);
+      background: var(--white);
+      color: var(--text);
       cursor:pointer;
-      min-height: 42px;
+      min-height: 40px;
+      font-family: inherit;
+      font-size: 13px;
     }
-    .ms-btn:focus{ outline:none; box-shadow:0 0 0 2px rgba(124,92,255,0.35); border-color: rgba(124,92,255,0.55); }
+    .ms-btn:focus{ outline:none; box-shadow:0 0 0 3px rgba(37,99,235,0.10); border-color: var(--accent); }
     .ms-panel{
       position:absolute;
       left:0; right:0;
-      top: calc(100% + 8px);
+      top: calc(100% + 6px);
       z-index: 50;
-      border-radius:14px;
-      border:1px solid rgba(255,255,255,0.14);
-      background: rgba(10,10,16,0.92);
-      box-shadow: 0 18px 50px rgba(0,0,0,0.55);
+      border-radius:12px;
+      border:1px solid var(--border);
+      background: var(--white);
+      box-shadow: var(--shadow-lg);
       overflow:hidden;
     }
     .ms-head{
@@ -41,32 +43,34 @@
       justify-content:space-between;
       gap:10px;
       padding:10px 10px;
-      border-bottom:1px solid rgba(255,255,255,0.08);
+      border-bottom:1px solid var(--border-light);
     }
-    .ms-head .ms-title{ font-size:12px; color: rgba(255,255,255,0.7); }
+    .ms-head .ms-title{ font-size:12px; color: var(--muted); }
     .ms-head .ms-actions{ display:flex; gap:8px; }
     .ms-mini{
-      padding:6px 10px;
-      border-radius:10px;
-      border:1px solid rgba(255,255,255,0.14);
-      background: rgba(0,0,0,0.2);
-      color: rgba(255,255,255,0.85);
+      padding:5px 10px;
+      border-radius:6px;
+      border:1px solid var(--border);
+      background: var(--white);
+      color: var(--text);
       cursor:pointer;
       font-size:12px;
+      font-family: inherit;
     }
-    .ms-list{ max-height: 260px; overflow:auto; padding: 6px; }
+    .ms-list{ max-height: 260px; overflow:auto; padding: 4px; }
     .ms-item{
       display:flex;
       align-items:center;
       gap:10px;
       padding:8px 10px;
-      border-radius:12px;
+      border-radius:8px;
       cursor:pointer;
-      color: rgba(255,255,255,0.90);
+      color: var(--text);
+      font-size: 13px;
     }
-    .ms-item:hover{ background: rgba(255,255,255,0.06); }
-    .ms-item input{ width:16px; height:16px; accent-color: rgb(124,92,255); }
-    .ms-caret{ opacity:0.7; }
+    .ms-item:hover{ background: var(--accent-bg); }
+    .ms-item input{ width:16px; height:16px; accent-color: var(--accent); }
+    .ms-caret{ opacity:0.5; }
 
     /* ✅ IMPORTANT: make inline inputs/selects in table always visible */
     .cellEdit, .cellSelect{
@@ -74,10 +78,12 @@
       min-width: 140px;
       box-sizing: border-box;
       padding: 8px 10px;
-      border-radius: 12px;
-      border: 1px solid rgba(255,255,255,0.14);
-      background: rgba(0,0,0,0.18);
-      color: rgba(255,255,255,0.90);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--white);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 13px;
     }
     .cellEdit:disabled, .cellSelect:disabled{
       opacity: .65;
