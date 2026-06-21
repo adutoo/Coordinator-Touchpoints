@@ -54,7 +54,7 @@ async function fetchAllStudents() {
     const { data, error } = await sb
       .from("students")
       .select("child_name,student_name,class_name,section,sr_number")
-      .order("child_name")
+      .order("sr_number")
       .range(offset, offset + chunk - 1);
 
     if (error) throw error;
@@ -156,7 +156,7 @@ async function loadCategories() {
       // Build selects
       tStudent.innerHTML =
         `<option value=""></option>` +
-        students.map(s => `<option value="${s.child_name}">${s.child_name}</option>`).join("");
+        students.map(s => `<option value="${s.sr_number}">${s.sr_number} — ${s.child_name}</option>`).join("");
 
       tIssue.innerHTML =
         `<option value=""></option>` +
@@ -174,7 +174,7 @@ async function loadCategories() {
       tCategory.innerHTML = `<option value=""></option>`;
 
       // Custom selects (search everywhere, especially student)
-      enhanceSelect(tStudent, { placeholder: "Select student...", search: true, searchThreshold: 0 });
+      enhanceSelect(tStudent, { placeholder: "Search by SR# or name...", search: true, searchThreshold: 0 });
       enhanceSelect(tIssue, { placeholder: "Select...", search: true });
       enhanceSelect(tDept, { placeholder: "Select...", search: true });
       enhanceSelect(tSubject, { placeholder: "Select subject...", search: true });
@@ -247,7 +247,7 @@ form.addEventListener("submit", async (e) => {
       return;
     }
 
-    const s = students.find(x => x.child_name === child);
+    const s = students.find(x => x.sr_number === child);
 
     // Auto POC + POR
     let poc = me.email;
@@ -294,7 +294,7 @@ form.addEventListener("submit", async (e) => {
     const payload = {
       ticket_number,
 
-      student_child_name: child,
+      student_child_name: s?.child_name ?? child,
       student_name: s?.student_name ?? "",
       class_name: s?.class_name ?? "",
       section: s?.section ?? "",

@@ -90,10 +90,10 @@ function isBlank(v) {
 
 function getPreferredUpsertKey() {
   const names = columns.map((c) => c.name);
-  if (names.includes("child_name")) return "child_name";
   if (names.includes("sr_number")) return "sr_number";
-  if (names.includes("id")) return "id";
-  return names[0] || "child_name";
+  if (names.includes("child_name")) return "child_name";
+  if (names.includes("student_name")) return "student_name";
+  return names[0] || "sr_number";
 }
 
 function inferColumnsFromRows(sampleRows) {

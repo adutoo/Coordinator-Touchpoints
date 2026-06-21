@@ -21,7 +21,7 @@ const REFERRAL_OPTIONS_TABLE = "referral_status_options";
 const STUDENT_REFERRAL_COL = "referral_status";
 
 let students = [];
-let studentsByChild = new Map();
+let studentsBySR = new Map();
 let mediums = [];
 let objectives = [];
 let ticketOptions = [];
@@ -125,7 +125,10 @@ function tryApplyPrefillToFirstBlock() {
   }
 
   if (__callPrefill.child_name && refs.child) {
-    refs.child.value = __callPrefill.child_name;
+    // Find SR number from child_name for backward compat with call prefill
+    const prefillStu = students.find(s => s.child_name === __callPrefill.child_name);
+    if (prefillStu) refs.child.value = prefillStu.sr_number;
+    else refs.child.value = __callPrefill.child_name;
     refs.child.dispatchEvent(new Event("change", { bubbles: true }));
     try {
       refreshSelect(refs.child);
@@ -263,7 +266,7 @@ function ensureOptionExists(selectEl, value) {
 }
 
 function fillStudentAuto(refs) {
-  const s = studentsByChild.get(refs.child.value);
+  const s = studentsBySR.get(refs.child.value);
   refs.studentName.value = s?.student_name ?? "";
   refs.className.value = s?.class_name ?? "";
   refs.section.value = s?.section ?? "";
@@ -445,8 +448,8 @@ function installTicketCombo(refs) {
 }
 
 // -------------------- Ticket Fetch --------------------
-function cacheKeyFor(childName, studentName) {
-  return (childName || "").trim() || (studentName || "").trim() || "";
+function cacheKeyFor(srNumber, childName) {
+  return (srNumber || "").trim() || (childName || "").trim() || "";
 }
 
 async function queryTicketsAttempt({ field, op, value }) {
@@ -460,14 +463,19 @@ async function queryTicketsAttempt({ field, op, value }) {
   return { data, error };
 }
 
-async function getTicketsForStudent({ childName, studentName }) {
-  const key = cacheKeyFor(childName, studentName);
+async function getTicketsForStudent({ srNumber, childName, studentName }) {
+  const key = cacheKeyFor(srNumber, childName);
   if (!key) return [];
   if (ticketsCache.has(key)) return ticketsCache.get(key);
 
   return await withBusy("Loading tickets…", async () => {
     const attempts = [];
 
+    // Primary lookup: by SR number (scholar_number on tickets table)
+    if (srNumber) {
+      attempts.push({ field: "scholar_number", op: "eq", value: srNumber });
+    }
+    // Fallback: by child_name
     if (childName) {
       attempts.push({ field: "student_child_name", op: "eq", value: childName });
       attempts.push({ field: "student_child_name", op: "ilike", value: `%${childName}%` });
@@ -499,8 +507,9 @@ async function getTicketsForStudent({ childName, studentName }) {
 }
 
 async function updateTicketsForChild(refs, keepTyped = "") {
-  const s = studentsByChild.get(refs.child.value);
-  const childName = refs.child.value || "";
+  const srNumber = refs.child.value || "";
+  const s = studentsBySR.get(srNumber);
+  const childName = s?.child_name ?? "";
   const studentName = s?.student_name ?? "";
 
   if (refs.ticketDept) refs.ticketDept.value = "";
@@ -513,15 +522,15 @@ async function updateTicketsForChild(refs, keepTyped = "") {
   combo.input.value = keepTyped || "";
   combo.tickets = [];
 
-  if (!childName && !studentName) return;
+  if (!srNumber && !childName && !studentName) return;
 
   hideMsg();
-  const tickets = await getTicketsForStudent({ childName, studentName });
+  const tickets = await getTicketsForStudent({ srNumber, childName, studentName });
   combo.tickets = tickets;
 }
 
 function enhanceBlockSelects(refs) {
-  if (refs.child) enhanceSelect(refs.child, { placeholder: "Select child...", search: true, searchThreshold: 0 });
+  if (refs.child) enhanceSelect(refs.child, { placeholder: "Search by SR# or name...", search: true, searchThreshold: 0 });
   if (refs.medium) enhanceSelect(refs.medium, { placeholder: "Select medium..." });
   if (refs.objective) enhanceSelect(refs.objective, { placeholder: "Select objective..." });
 
@@ -544,7 +553,7 @@ function createBlock(cloneFrom = null) {
   if (refs.child) {
     refs.child.innerHTML =
       `<option value=""></option>` +
-      students.map((s) => `<option value="${escAttr(s.child_name)}">${escText(s.child_name)}</option>`).join("");
+      students.map((s) => `<option value="${escAttr(s.sr_number)}">${escText(s.sr_number)} — ${escText(s.child_name)}</option>`).join("");
   }
 
   if (refs.medium) refs.medium.innerHTML = buildOptions(mediums, "label", "label");
@@ -597,6 +606,7 @@ function createBlock(cloneFrom = null) {
     }
 
     if (refs.summary) refs.summary.value = src.summary?.value || "";
+    // Note: child dropdown value is sr_number, so cloneFrom works automatically
   }
 
   fillStudentAuto(refs);
@@ -623,7 +633,7 @@ function createBlock(cloneFrom = null) {
       setBusyProgress(null, "Fetching students, mediums, objectives…");
 
       const [stu, med, obj, tick, refOpt] = await Promise.all([
-        fetchAll("students", `child_name,student_name,class_name,section,sr_number,${STUDENT_REFERRAL_COL}`, "child_name"),
+        fetchAll("students", `child_name,student_name,class_name,section,sr_number,${STUDENT_REFERRAL_COL}`, "sr_number"),
         sb.from("mediums").select("label,time_min,is_active,sort_order").eq("is_active", true).order("sort_order").order("label"),
         sb.from("objectives").select("label,is_active,sort_order").eq("is_active", true).order("sort_order").order("label"),
         sb.from("ticket_raised_options").select("label,is_active,sort_order").eq("is_active", true).order("sort_order").order("label"),
@@ -631,7 +641,7 @@ function createBlock(cloneFrom = null) {
       ]);
 
       students = stu || [];
-      studentsByChild = new Map(students.map((s) => [s.child_name, s]));
+      studentsBySR = new Map(students.map((s) => [s.sr_number, s]));
 
       mediums = med.data || [];
       objectives = obj.data || [];
@@ -702,12 +712,14 @@ form?.addEventListener("submit", async (e) => {
   const payloads = [];
 
   // ✅ Collect referral updates per child (only if filled)
-  const referralUpdates = new Map(); // child_name -> referral_status
+  const referralUpdates = new Map(); // sr_number -> referral_status
 
   for (let i = 0; i < blocks.length; i++) {
     const refs = blockRefs(blocks[i]);
 
-    const child_name = refs.child?.value || "";
+    const sr_value = refs.child?.value || "";
+    const s_lookup = studentsBySR.get(sr_value);
+    const child_name = s_lookup?.child_name ?? "";
     const medium = refs.medium?.value || "";
     const objective = refs.objective?.value || "";
 
@@ -715,7 +727,7 @@ form?.addEventListener("submit", async (e) => {
       return show(`Entry #${i + 1}: Please select Child Name, Medium, and Objective.`, true);
     }
 
-    const s = studentsByChild.get(child_name);
+    const s = s_lookup;
     const summaryText = refs.summary?.value?.trim() || "";
     const positives = summaryText;
     const suggestion = "";
@@ -731,7 +743,7 @@ form?.addEventListener("submit", async (e) => {
 
     // ✅ Referral status capture (optional)
     const referral_status = (refs.referralStatus?.value || "").trim();
-    if (referral_status) referralUpdates.set(child_name, referral_status);
+    if (referral_status) referralUpdates.set(sr_value, referral_status);
 
     payloads.push({
       child_name,
@@ -777,8 +789,8 @@ form?.addEventListener("submit", async (e) => {
     if (referralUpdates.size) {
       setBusyProgress(null, "Updating Referral Status…");
 
-      const updates = Array.from(referralUpdates.entries()).map(([child_name, referral_status]) => ({
-        child_name,
+      const updates = Array.from(referralUpdates.entries()).map(([sr_number, referral_status]) => ({
+        sr_number,
         referral_status,
       }));
 
@@ -787,7 +799,7 @@ form?.addEventListener("submit", async (e) => {
           sb
             .from("students")
             .update({ [STUDENT_REFERRAL_COL]: u.referral_status })
-            .eq("child_name", u.child_name)
+            .eq("sr_number", u.sr_number)
         )
       );
 
@@ -797,7 +809,7 @@ form?.addEventListener("submit", async (e) => {
 
       if (failed.length) {
         const failedNames = failed
-          .map(({ idx }) => updates[idx]?.child_name)
+          .map(({ idx }) => updates[idx]?.sr_number)
           .filter(Boolean)
           .slice(0, 8);
 
@@ -812,8 +824,8 @@ form?.addEventListener("submit", async (e) => {
         );
       } else {
         // update local cache
-        for (const [child_name, referral_status] of referralUpdates.entries()) {
-          const obj = studentsByChild.get(child_name);
+        for (const [sr_number, referral_status] of referralUpdates.entries()) {
+          const obj = studentsBySR.get(sr_number);
           if (obj) obj[STUDENT_REFERRAL_COL] = referral_status;
         }
       }

@@ -423,7 +423,7 @@ function buildServerQuery({ includeCount = false } = {}) {
   if (text) {
     const esc = text.replace(/,/g, " ");
     query = query.or(
-      `ticket_number.ilike.%${esc}%,student_child_name.ilike.%${esc}%,student_name.ilike.%${esc}%,category.ilike.%${esc}%`
+      `ticket_number.ilike.%${esc}%,student_child_name.ilike.%${esc}%,student_name.ilike.%${esc}%,category.ilike.%${esc}%,scholar_number.ilike.%${esc}%`
     );
   }
 

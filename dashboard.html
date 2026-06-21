@@ -15,6 +15,19 @@
 
     <div class="grid">
 
+      <!-- Admin-only coordinator filter -->
+      <div class="card" id="adminFilterCard" style="display:none;">
+        <div class="form" style="margin-top:0;">
+          <div class="field span4">
+            <label>View as Coordinator</label>
+            <select id="coordFilter"><option value="">All Coordinators</option></select>
+          </div>
+          <div class="field span8">
+            <p class="muted" style="margin:0;padding-top:18px;">Admin view — select a coordinator to see their stats, or leave "All" for school-wide data.</p>
+          </div>
+        </div>
+      </div>
+
       <!-- Your Stats vs School Stats -->
       <div class="card span6">
         <h2>Your Overview</h2>

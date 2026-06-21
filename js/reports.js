@@ -18,6 +18,13 @@ const fromDate = document.getElementById("fromDate");
 const toDate = document.getElementById("toDate");
 const q = document.getElementById("q");
 
+const coordFilterWrap = document.getElementById("coordFilterWrap");
+const coordFilter = document.getElementById("coordFilter");
+const ownerTh = document.getElementById("ownerTh");
+
+const pageHeading = document.getElementById("pageHeading");
+const pageSubtitle = document.getElementById("pageSubtitle");
+
 const applyBtn = document.getElementById("applyBtn");
 const clearBtn = document.getElementById("clearBtn");
 const exportBtn = document.getElementById("exportBtn");
@@ -39,6 +46,8 @@ let page = 0;
 let totalCount = 0;
 let isAdmin = false;
 let currentUserName = ""; // ← auto-set on boot
+const COL_COUNT_NORMAL = 16;
+const COL_COUNT_ADMIN = 17; // +Owner column
 
 function show(text, isError = false) {
   msg.style.display = "block";
@@ -49,6 +58,7 @@ function show(text, isError = false) {
 function hideMsg() { msg.style.display = "none"; }
 function td(v) { return (v ?? "").toString(); }
 function pad2(n) { return String(n).padStart(2, "0"); }
+function colCount() { return isAdmin ? COL_COUNT_ADMIN : COL_COUNT_NORMAL; }
 
 function fmtTS(iso) {
   if (!iso) return "";
@@ -122,7 +132,17 @@ function setRangeThisMonth() {
   toDate.value = `${clamped.to.getFullYear()}-${pad2(clamped.to.getMonth() + 1)}-${pad2(clamped.to.getDate())}`;
 }
 
-// -------------------- Query builder (auto-filters to logged-in coordinator) --------------------
+// ---- Determine active owner filter ----
+function getActiveOwnerFilter() {
+  // Admin with coord filter: use selected value ("" = all)
+  if (isAdmin && coordFilter) {
+    return coordFilter.value; // "" means all, otherwise specific coordinator name
+  }
+  // Non-admin: always own name
+  return currentUserName;
+}
+
+// -------------------- Query builder --------------------
 function buildBaseQuery({ includeCount = false } = {}) {
   let query = sb
     .from("touchpoints")
@@ -135,9 +155,10 @@ function buildBaseQuery({ includeCount = false } = {}) {
     .not("medium", "is", null).neq("medium", "")
     .not("objective", "is", null).neq("objective", "");
 
-  // ✅ Always filter to current user
-  if (currentUserName) {
-    query = query.eq("owner_name", currentUserName);
+  // ✅ Filter by coordinator (admin can see all or specific, non-admin sees own)
+  const ownerFilter = getActiveOwnerFilter();
+  if (ownerFilter) {
+    query = query.eq("owner_name", ownerFilter);
   }
 
   if (objectiveFilter?.value) query = query.eq("objective", objectiveFilter.value);
@@ -163,7 +184,7 @@ function buildBaseQuery({ includeCount = false } = {}) {
   if (text) {
     const esc = text.replace(/,/g, " ");
     query = query.or(
-      `child_name.ilike.%${esc}%,student_name.ilike.%${esc}%,ticket_number.ilike.%${esc}%`
+      `child_name.ilike.%${esc}%,student_name.ilike.%${esc}%,ticket_number.ilike.%${esc}%,sr_number.ilike.%${esc}%`
     );
   }
 
@@ -179,6 +200,20 @@ async function detectAdminRaw() {
   const { data, error } = await sb.from("profiles").select("role").eq("id", user.id).maybeSingle();
   if (error) return false;
   return data?.role === "admin";
+}
+
+async function loadCoordinatorFilterRaw() {
+  if (!coordFilter) return;
+  const { data, error } = await sb.from("profiles").select("display_name").order("display_name");
+  if (error) { console.warn("Could not load coordinators:", error); return; }
+
+  const uniq = Array.from(new Set((data || []).map(x => x.display_name).filter(Boolean)));
+  coordFilter.innerHTML =
+    `<option value="">All Coordinators</option>` +
+    uniq.map(n => `<option value="${n}">${n}</option>`).join("");
+
+  enhanceSelect(coordFilter, { placeholder: "All Coordinators", search: true, searchThreshold: 0 });
+  refreshSelect(coordFilter);
 }
 
 async function loadObjectivesRaw() {
@@ -203,7 +238,7 @@ async function loadObjectivesRaw() {
 
 async function loadPageRaw() {
   hideMsg();
-  rowsEl.innerHTML = `<tr><td colspan="16">Loading...</td></tr>`;
+  rowsEl.innerHTML = `<tr><td colspan="${colCount()}">Loading...</td></tr>`;
 
   const from = page * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;
@@ -220,7 +255,7 @@ async function loadPageRaw() {
   nextBtn.disabled = (to + 1) >= totalCount;
 
   if (!data?.length) {
-    rowsEl.innerHTML = `<tr><td colspan="16">No results.</td></tr>`;
+    rowsEl.innerHTML = `<tr><td colspan="${colCount()}">No results.</td></tr>`;
     return;
   }
 
@@ -232,6 +267,7 @@ async function loadPageRaw() {
       <td style="white-space:pre-wrap;">${td(r.comments_concat || r.positives || "")}</td>
       <td>${td(r.ticket_number)}</td>
       <td>${td(r.ticket_raised)}</td>
+      ${isAdmin ? `<td>${td(r.owner_name)}</td>` : ""}
       <td>${fmtTS(r.touch_timestamp)}</td>
       <td>${td(r.student_name)}</td>
       <td>${td(r.class_name)}</td>
@@ -284,29 +320,37 @@ async function exportAllFilteredRaw() {
 
   setBusyProgress(null, `Building XLSX… (${all.length} rows)`);
 
-  const rows = all.map(r => ({
-    "Child Name": td(r.child_name),
-    "Medium": td(r.medium),
-    "Objective": td(r.objective),
-    "Summary": td(r.comments_concat || r.positives || ""),
-    "Ticket Number": td(r.ticket_number),
-    "Ticket raised?": td(r.ticket_raised),
-    "Timestamp": fmtTS(r.touch_timestamp),
-    "Name": td(r.student_name),
-    "Class": td(r.class_name),
-    "Section": td(r.section),
-    "SR Number": td(r.sr_number),
-    "Week": td(r.week),
-    "Month": td(r.month),
-    "Year": td(r.year),
-    "Time": td(r.time),
-  }));
+  const rows = all.map(r => {
+    const base = {
+      "Child Name": td(r.child_name),
+      "Medium": td(r.medium),
+      "Objective": td(r.objective),
+      "Summary": td(r.comments_concat || r.positives || ""),
+      "Ticket Number": td(r.ticket_number),
+      "Ticket raised?": td(r.ticket_raised),
+    };
+    if (isAdmin) base["Owner"] = td(r.owner_name);
+    Object.assign(base, {
+      "Timestamp": fmtTS(r.touch_timestamp),
+      "Name": td(r.student_name),
+      "Class": td(r.class_name),
+      "Section": td(r.section),
+      "SR Number": td(r.sr_number),
+      "Week": td(r.week),
+      "Month": td(r.month),
+      "Year": td(r.year),
+      "Time": td(r.time),
+    });
+    return base;
+  });
 
   const ws = window.XLSX.utils.json_to_sheet(rows);
   const wb = window.XLSX.utils.book_new();
-  window.XLSX.utils.book_append_sheet(wb, ws, "My Entries");
+  const sheetName = isAdmin ? "All Entries" : "My Entries";
+  window.XLSX.utils.book_append_sheet(wb, ws, sheetName);
 
-  const name = `My_Entries_Report_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  const label = isAdmin ? "Entries_Report" : "My_Entries_Report";
+  const name = `${label}_${new Date().toISOString().slice(0, 10)}.xlsx`;
   window.XLSX.writeFile(wb, name);
 
   show(`Exported ${rows.length} rows ✅`);
@@ -319,7 +363,7 @@ async function loadPage() {
     await loadPageRaw();
   }).catch((err) => {
     console.error(err);
-    rowsEl.innerHTML = `<tr><td colspan="16">${td(err?.message || String(err))}</td></tr>`;
+    rowsEl.innerHTML = `<tr><td colspan="${colCount()}">${td(err?.message || String(err))}</td></tr>`;
     show(err?.message || String(err), true);
   });
 }
@@ -393,6 +437,27 @@ function initSessionUI() {
   });
 }
 
+// ---- Admin UI setup ----
+function setupAdminUI() {
+  // Show coordinator filter
+  if (coordFilterWrap) coordFilterWrap.style.display = "";
+
+  // Show Owner column header
+  if (ownerTh) ownerTh.style.display = "";
+
+  // Update page heading
+  if (pageHeading) pageHeading.textContent = "All Entries";
+  if (pageSubtitle) pageSubtitle.textContent = "All coordinator entries. Filter by coordinator, date range + objective.";
+
+  // Coordinator filter change handler
+  if (coordFilter) {
+    coordFilter.addEventListener("change", async () => {
+      page = 0;
+      await loadPage();
+    });
+  }
+}
+
 // ---------- Boot ----------
 (async () => {
   const { me, profile } = await mountNav("reports");
@@ -403,6 +468,13 @@ function initSessionUI() {
   await withBusy("Loading entries…", async () => {
     setBusyProgress(null, "Checking access…");
     isAdmin = await detectAdminRaw();
+
+    // If admin, show coordinator filter + Owner column
+    if (isAdmin) {
+      setupAdminUI();
+      setBusyProgress(null, "Loading coordinators…");
+      await loadCoordinatorFilterRaw();
+    }
 
     setBusyProgress(null, "Loading session…");
     initSessionUI();
@@ -425,6 +497,12 @@ clearBtn.addEventListener("click", async () => {
   if (objectiveFilter) {
     objectiveFilter.value = "";
     refreshSelect(objectiveFilter);
+  }
+
+  // Reset coordinator filter for admin
+  if (isAdmin && coordFilter) {
+    coordFilter.value = "";
+    refreshSelect(coordFilter);
   }
 
   q.value = "";
