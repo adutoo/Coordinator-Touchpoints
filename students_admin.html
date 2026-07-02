@@ -183,6 +183,35 @@
       cursor: not-allowed;
       background: var(--bg1);
     }
+
+    @media (max-width: 768px){
+      .sm-toolbar{
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .sm-toolbar .left,
+      .sm-toolbar .right{
+        flex-direction: column;
+        align-items: stretch;
+        width: 100%;
+      }
+      .sm-toolbar .left .btn,
+      .sm-toolbar .right .btn{
+        width: 100%;
+        text-align: center;
+        padding: 11px 14px;
+        font-size: 14px;
+      }
+      .sm-search{
+        min-width: 100% !important;
+        width: 100% !important;
+        height: 42px;
+        font-size: 14px;
+      }
+      .sm-modal-card{
+        width: min(720px, 100vw - 16px);
+      }
+    }
   </style>
 </head>
 

@@ -58,7 +58,7 @@ a:hover{ color: var(--accent-light); }
 }
 
 @media (max-width: 600px){
-  .container{ padding: 14px; }
+  .container{ padding: 10px; }
 }
 
 
@@ -76,6 +76,7 @@ a:hover{ color: var(--accent-light); }
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
   flex-wrap: wrap;
+  position: relative;
 }
 
 .brand{
@@ -126,6 +127,91 @@ a:hover{ color: var(--accent-light); }
   background: var(--accent-bg);
   color: var(--accent);
   font-weight: 600;
+}
+
+/* ===== Hamburger Button ===== */
+.nav-toggle{
+  display: none;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--white);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  flex-shrink: 0;
+}
+.nav-toggle span{
+  display: block;
+  width: 18px;
+  height: 2px;
+  background: var(--text);
+  border-radius: 2px;
+  transition: 200ms ease;
+  position: relative;
+}
+.nav-toggle span::before,
+.nav-toggle span::after{
+  content: '';
+  display: block;
+  width: 18px;
+  height: 2px;
+  background: var(--text);
+  border-radius: 2px;
+  position: absolute;
+  left: 0;
+  transition: 200ms ease;
+}
+.nav-toggle span::before{ top: -6px; }
+.nav-toggle span::after{ top: 6px; }
+
+/* Hamburger open state */
+.nav-toggle.open span{ background: transparent; }
+.nav-toggle.open span::before{ top: 0; transform: rotate(45deg); }
+.nav-toggle.open span::after{ top: 0; transform: rotate(-45deg); }
+
+/* ===== Mobile Navigation ===== */
+@media (max-width: 768px){
+  .nav-toggle{ display: inline-flex; }
+
+  .topbar{
+    padding: 10px 14px;
+    border-radius: var(--radius);
+  }
+
+  .brand h1{ font-size: 13px; }
+  .brand p{ font-size: 11px; }
+  .logo{ width: 32px; height: 32px; border-radius: 8px; }
+
+  .nav{
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    width: 100%;
+    padding-top: 10px;
+    margin-top: 10px;
+    border-top: 1px solid var(--border-light);
+  }
+
+  .nav.open{ display: flex; }
+
+  .nav a{
+    padding: 12px 14px;
+    font-size: 14px;
+    border-radius: 8px;
+    text-align: left;
+  }
+
+  .nav .btn{
+    width: 100%;
+    text-align: center;
+    margin-top: 4px;
+    padding: 12px 14px;
+    font-size: 14px;
+  }
 }
 
 
@@ -181,6 +267,10 @@ a:hover{ color: var(--accent-light); }
   margin-top: 16px;
 }
 
+@media (max-width: 768px){
+  .grid{ gap: 12px; margin-top: 12px; }
+}
+
 
 /* =========================
    Cards
@@ -211,6 +301,14 @@ a:hover{ color: var(--accent-light); }
   font-size: 12px;
 }
 
+@media (max-width: 768px){
+  .card{
+    padding: 14px;
+    border-radius: var(--radius);
+  }
+  .card h2{ font-size: 15px; }
+}
+
 
 /* =========================
    KPI Pills
@@ -224,6 +322,7 @@ a:hover{ color: var(--accent-light); }
   border-radius: var(--radius);
   background: var(--accent-bg);
   border: 1px solid var(--accent-border);
+  flex: 1 1 auto;
 }
 .kpi .pill b{
   font-size: 20px;
@@ -267,6 +366,53 @@ a:hover{ color: var(--accent-light); }
   letter-spacing: 0.2px;
 }
 
+@media (max-width: 768px){
+  .kpi{ gap: 8px; }
+  .kpi .pill{
+    min-width: calc(50% - 4px);
+    padding: 12px;
+  }
+  .kpi .pill b{ font-size: 18px; }
+  .kpi .pill span{ font-size: 11px; }
+}
+
+
+/* =========================
+   Pagination Row
+   ========================= */
+.pagination-row{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.pagination-controls{
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+@media (max-width: 768px){
+  .pagination-row{
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .pagination-row .muted{
+    text-align: center;
+    font-size: 12px;
+  }
+  .pagination-controls{
+    justify-content: center;
+  }
+  .pagination-controls .btn{
+    flex: 0 0 auto;
+    min-width: 70px;
+    text-align: center;
+  }
+}
+
 
 /* =========================
    Forms & Fields
@@ -293,7 +439,7 @@ a:hover{ color: var(--accent-light); }
   padding: 9px 12px;
   outline:none;
   transition: border-color 160ms ease, box-shadow 160ms ease;
-  font-size: 13px;
+  font-size: 16px; /* prevents iOS zoom on focus */
   font-family: inherit;
 }
 .field input:focus, .field select:focus, .field textarea:focus{
@@ -311,6 +457,23 @@ a:hover{ color: var(--accent-light); }
   display:flex; gap:10px; flex-wrap:wrap; align-items:center;
 }
 
+@media (max-width: 768px){
+  .field input, .field select, .field textarea{
+    padding: 11px 12px;
+    font-size: 16px;
+  }
+  .field textarea{ min-height: 80px; }
+  .row{ gap: 8px; }
+
+  /* Make buttons full-width in action rows on mobile */
+  .row .btn{
+    flex: 1 1 auto;
+    text-align: center;
+    padding: 11px 14px;
+    font-size: 14px;
+  }
+}
+
 
 /* =========================
    Tables
@@ -319,6 +482,7 @@ a:hover{ color: var(--accent-light); }
   overflow:auto;
   border-radius: var(--radius);
   border: 1px solid var(--border);
+  -webkit-overflow-scrolling: touch;
 }
 table{
   width:100%;
@@ -365,6 +529,22 @@ tr:hover td {
   .field.span8{ grid-column: span 8; }
   .field.span9{ grid-column: span 9; }
   .field.span12{ grid-column: span 12; }
+}
+
+@media (max-width: 768px){
+  .tablewrap{
+    border-radius: 8px;
+    margin: 0 -2px;
+  }
+  table{ min-width: 700px; }
+  th, td{
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  .notice{
+    font-size: 12px;
+    padding: 10px 12px;
+  }
 }
 
 
@@ -917,4 +1097,95 @@ th.sm-colhead:hover .sm-col-del{
   font-size: 12px;
   color: var(--muted);
   font-weight: 500;
+}
+
+@media (max-width: 768px){
+  .stat-comparison{ gap: 8px; }
+  .stat-box{ padding: 12px 10px; }
+  .stat-box .stat-value{ font-size: 22px; }
+  .stat-box .stat-label{ font-size: 11px; }
+}
+
+
+/* =========================
+   Global Mobile Utilities
+   ========================= */
+@media (max-width: 768px){
+  /* Sticky nav: less top offset on mobile */
+  #navHolder{
+    top: 6px;
+  }
+
+  /* Select trigger: bigger touch target */
+  .select-trigger{
+    padding: 11px 12px;
+    font-size: 14px;
+  }
+
+  /* Options in dropdown: bigger touch targets */
+  .option{
+    padding: 12px 14px;
+    font-size: 14px;
+  }
+
+  /* ComboSelect: bigger touch */
+  .cs-comboInput{
+    height: 42px;
+    padding: 11px 12px;
+    font-size: 14px;
+  }
+  .cs-combo-item{
+    padding: 12px 14px;
+    font-size: 14px;
+  }
+
+  /* Entry blocks */
+  .tp-entry-head{
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* Pagination row */
+  .field .row{
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .field .row .muted{
+    text-align: center;
+  }
+
+  /* File picker */
+  .file-picker{
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .file-name-chip{
+    max-width: 100%;
+  }
+
+  /* Admin tables */
+  .sm-tablewrap{
+    border-radius: 8px;
+  }
+  .sm-toolbar{
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .sm-toolbar .left,
+  .sm-toolbar .right{
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+  .sm-search{
+    min-width: 100% !important;
+    width: 100% !important;
+  }
+
+  /* Busy/loading overlay text */
+  .busy-text{
+    font-size: 14px !important;
+    padding: 0 16px;
+    text-align: center;
+  }
 }

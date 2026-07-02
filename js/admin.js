@@ -653,7 +653,7 @@ function wireFilePicker() {
         const pct = Math.round((done / parsedStudents.length) * 100);
         setBusyProgress(pct, `Uploading ${done}/${parsedStudents.length}…`);
 
-        const { error } = await sb.from("students").upsert(batch, { onConflict: "child_name" });
+        const { error } = await sb.from("students").upsert(batch, { onConflict: "sr_number" });
         if (error) return show(stuMsg, error.message, true);
 
         done += batch.length;
@@ -693,7 +693,7 @@ function wireStudentSearch() {
       .from("students")
       .select("id, child_name, student_name, class_name, section, sr_number")
       .or(`child_name.ilike.%${esc}%,student_name.ilike.%${esc}%,sr_number.ilike.%${esc}%`)
-      .order("child_name")
+      .order("sr_number")
       .limit(50);
 
     if (error) {

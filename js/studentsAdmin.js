@@ -243,7 +243,8 @@ function buildQuery({ includeCount = true } = {}) {
   }
 
   const colNames = columns.map((c) => c.name);
-  if (colNames.includes("child_name")) q.order("child_name", { ascending: true });
+  if (colNames.includes("sr_number")) q.order("sr_number", { ascending: true });
+  else if (colNames.includes("child_name")) q.order("child_name", { ascending: true });
   else if (colNames.includes("id")) q.order("id", { ascending: true });
 
   const from = page * PAGE_SIZE;
@@ -842,7 +843,8 @@ async function exportXlsx() {
         );
       }
 
-      if (columns.map((c) => c.name).includes("child_name")) q = q.order("child_name", { ascending: true });
+      if (columns.map((c) => c.name).includes("sr_number")) q = q.order("sr_number", { ascending: true });
+      else if (columns.map((c) => c.name).includes("child_name")) q = q.order("child_name", { ascending: true });
 
       const { data, error } = await q;
       if (error) throw error;

@@ -89,6 +89,24 @@
       opacity: .65;
       cursor: not-allowed;
     }
+
+    @media (max-width: 768px){
+      .ms-btn{
+        padding: 11px 12px;
+        font-size: 14px;
+        min-height: 44px;
+      }
+      .ms-item{
+        padding: 10px 12px;
+        font-size: 14px;
+      }
+      .ms-item input{ width: 18px; height: 18px; }
+      .cellEdit, .cellSelect{
+        min-width: 120px;
+        padding: 10px;
+        font-size: 14px;
+      }
+    }
   </style>
 </head>
 
@@ -206,9 +224,9 @@
 
         <div id="msg" class="notice" style="display:none;"></div>
 
-        <div class="row" style="justify-content:space-between; margin-top:10px;">
+        <div class="pagination-row" style="margin-top:10px;">
           <div id="meta" class="muted"></div>
-          <div class="row" style="gap:10px;">
+          <div class="pagination-controls">
             <button id="prevBtn" class="btn" type="button">Prev</button>
             <div id="pageInfo" class="muted"></div>
             <button id="nextBtn" class="btn" type="button">Next</button>

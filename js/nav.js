@@ -41,7 +41,9 @@ export async function mountNav(activePage) {
         </div>
       </div>
 
-      <div class="nav">
+      <button class="nav-toggle" id="navToggle" aria-label="Menu"><span></span></button>
+
+      <div class="nav" id="navLinks">
         ${link("dashboard.html", "dashboard", "Dashboard")}
         ${link("entry.html", "entry", "New Entry")}
         ${link("reports.html", "reports", isAdmin ? "All Entries" : "My Entries")}
@@ -59,6 +61,24 @@ export async function mountNav(activePage) {
 
   const logoutBtn = document.getElementById("logoutBtn");
   if (logoutBtn) logoutBtn.addEventListener("click", signOut);
+
+  // Hamburger toggle
+  const navToggle = document.getElementById("navToggle");
+  const navLinks = document.getElementById("navLinks");
+  if (navToggle && navLinks) {
+    navToggle.addEventListener("click", () => {
+      navToggle.classList.toggle("open");
+      navLinks.classList.toggle("open");
+    });
+
+    // Auto-close menu when a nav link is tapped (mobile)
+    navLinks.querySelectorAll("a").forEach(a => {
+      a.addEventListener("click", () => {
+        navToggle.classList.remove("open");
+        navLinks.classList.remove("open");
+      });
+    });
+  }
 
   return { me, profile };
 }
